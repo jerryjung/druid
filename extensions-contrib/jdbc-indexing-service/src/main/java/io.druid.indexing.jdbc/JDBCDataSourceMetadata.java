@@ -19,11 +19,26 @@
 
 package io.druid.indexing.jdbc;
 
+import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import io.druid.indexing.overlord.DataSourceMetadata;
 import io.druid.java.util.common.IAE;
 
 public class JDBCDataSourceMetadata implements DataSourceMetadata
 {
+  private String table;
+  private Integer offsets;
+
+
+  @JsonCreator
+  public JDBCDataSourceMetadata(
+      @JsonProperty("table") String table,
+      @JsonProperty("offsets") Integer offsets
+  )
+  {
+    this.table = table;
+    this.offsets = offsets;
+  }
 
   @Override
   public boolean isValidStart()

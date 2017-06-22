@@ -25,32 +25,52 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.annotations.VisibleForTesting;
+import com.google.common.base.Function;
 import com.google.common.base.Joiner;
 import com.google.common.base.Optional;
 import com.google.common.base.Preconditions;
+import com.google.common.base.Supplier;
 import com.google.common.base.Throwables;
+import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableMap;
+import com.google.common.collect.Iterables;
+import com.google.common.collect.Maps;
+import com.google.common.collect.Sets;
 import com.google.common.primitives.Ints;
 import com.metamx.emitter.EmittingLogger;
+import io.druid.data.input.Committer;
+import io.druid.data.input.InputRow;
 import io.druid.data.input.impl.InputRowParser;
 import io.druid.indexing.appenderator.ActionBasedSegmentAllocator;
 import io.druid.indexing.appenderator.ActionBasedUsedSegmentChecker;
 import io.druid.indexing.common.TaskStatus;
 import io.druid.indexing.common.TaskToolbox;
+import io.druid.indexing.common.actions.SegmentTransactionalInsertAction;
 import io.druid.indexing.common.actions.TaskActionClient;
 import io.druid.indexing.common.task.AbstractTask;
 import io.druid.indexing.common.task.TaskResource;
+import io.druid.java.util.common.ISE;
 import io.druid.java.util.common.guava.Sequence;
+import io.druid.java.util.common.parsers.ParseException;
+import io.druid.query.DruidMetrics;
 import io.druid.query.NoopQueryRunner;
 import io.druid.query.Query;
 import io.druid.query.QueryPlus;
 import io.druid.query.QueryRunner;
 import io.druid.segment.indexing.DataSchema;
+import io.druid.segment.indexing.RealtimeIOConfig;
+import io.druid.segment.realtime.FireDepartment;
 import io.druid.segment.realtime.FireDepartmentMetrics;
+import io.druid.segment.realtime.RealtimeMetricsMonitor;
 import io.druid.segment.realtime.appenderator.Appenderator;
 import io.druid.segment.realtime.appenderator.AppenderatorDriver;
+import io.druid.segment.realtime.appenderator.AppenderatorDriverAddResult;
 import io.druid.segment.realtime.appenderator.Appenderators;
+import io.druid.segment.realtime.appenderator.SegmentsAndMetadata;
+import io.druid.segment.realtime.appenderator.TransactionalSegmentPublisher;
 import io.druid.segment.realtime.firehose.ChatHandler;
 import io.druid.segment.realtime.firehose.ChatHandlerProvider;
+import io.druid.timeline.DataSegment;
 import org.joda.time.DateTime;
 
 import javax.ws.rs.Consumes;
@@ -67,7 +87,9 @@ import java.util.Map;
 import java.util.Random;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
@@ -98,8 +120,8 @@ public class JDBCIndexTask extends AbstractTask implements ChatHandler
   private final JDBCIOConfig ioConfig;
   private final Optional<ChatHandlerProvider> chatHandlerProvider;
 
-  private final Map<Integer, Long> endOffsets = new ConcurrentHashMap<>();
-  private final Map<Integer, Long> nextOffsets = new ConcurrentHashMap<>();
+  private final AtomicInteger endOffsets = new AtomicInteger();
+  private final AtomicInteger nextOffsets = new AtomicInteger();
 
   private ObjectMapper mapper;
 
@@ -232,6 +254,129 @@ public class JDBCIndexTask extends AbstractTask implements ChatHandler
     mapper = toolbox.getObjectMapper();
     status = Status.STARTING;
 
+    if (chatHandlerProvider.isPresent()) {
+      log.info("Found chat handler of class[%s]", chatHandlerProvider.get().getClass().getName());
+      chatHandlerProvider.get().register(getId(), this, false);
+    } else {
+      log.warn("No chat handler detected");
+    }
+
+    runThread = Thread.currentThread();
+
+    // Set up FireDepartmentMetrics
+    final FireDepartment fireDepartmentForMetrics = new FireDepartment(
+        dataSchema,
+        new RealtimeIOConfig(null, null, null),
+        null
+    );
+
+
+    fireDepartmentMetrics = fireDepartmentForMetrics.getMetrics();
+    toolbox.getMonitorScheduler().addMonitor(
+        new RealtimeMetricsMonitor(
+            ImmutableList.of(fireDepartmentForMetrics),
+            ImmutableMap.of(DruidMetrics.TASK_ID, new String[]{getId()})
+        )
+    );
+
+
+    try (
+        final Appenderator appenderator0 = newAppenderator(fireDepartmentMetrics, toolbox);
+        final AppenderatorDriver driver = newDriver(appenderator0, toolbox, fireDepartmentMetrics)
+    ) {
+      toolbox.getDataSegmentServerAnnouncer().announce();
+      appenderator = appenderator0;
+
+      final String table = ioConfig.getTableName();
+
+      // Start up, set up initial offsets.
+      final Object restoredMetadata = driver.startJob();
+
+      if (restoredMetadata == null) {
+        nextOffsets.set(ioConfig.getStartPartitions());
+      } else {
+        final Map<String, Object> restoredMetadataMap = (Map) restoredMetadata;
+        nextOffsets.set(nextOffsets.get() + 1);
+
+        if (nextOffsets.get() != ioConfig.getStartPartitions()) {
+          throw new ISE(
+              "WTF?! Restored partitions[%s] but expected partitions[%s]",
+              nextOffsets.get(),
+              ioConfig.getStartPartitions()
+          );
+        }
+      }
+
+      // Set up committer.
+      final Supplier<Committer> committerSupplier = new Supplier<Committer>()
+      {
+        @Override
+        public Committer get()
+        {
+          final AtomicInteger snapshot = nextOffsets;
+
+          return new Committer()
+          {
+            @Override
+            public Object getMetadata()
+            {
+              return snapshot;
+
+            }
+
+            @Override
+            public void run()
+            {
+              // Do nothing.
+            }
+          };
+        }
+      };
+
+      status = Status.READING;
+      Integer assignment = nextOffsets.get();
+      boolean stillReading = !assignment.equals(0);
+
+
+      try {
+        while (stillReading) {
+          if (stopRequested) {
+            break;
+          }
+
+          fireDepartmentMetrics.incrementProcessed();
+        }
+      }
+      finally {
+        driver.persist(committerSupplier.get()); // persist pending data
+      }
+
+
+    }
+    catch (InterruptedException | RejectedExecutionException e) {
+      // handle the InterruptedException that gets wrapped in a RejectedExecutionException
+      if (e instanceof RejectedExecutionException
+          && (e.getCause() == null || !(e.getCause() instanceof InterruptedException))) {
+        throw e;
+      }
+
+      // if we were interrupted because we were asked to stop, handle the exception and return success, else rethrow
+      if (!stopRequested) {
+        Thread.currentThread().interrupt();
+        throw e;
+      }
+
+      log.info("The task was asked to stop before completing");
+    }
+    finally {
+      if (chatHandlerProvider.isPresent()) {
+        chatHandlerProvider.get().unregister(getId());
+      }
+    }
+
+    toolbox.getDataSegmentServerAnnouncer().unannounce();
+
+
     //TODO::implement
     return success();
   }
@@ -320,7 +465,7 @@ public class JDBCIndexTask extends AbstractTask implements ChatHandler
   @GET
   @Path("/offsets/current")
   @Produces(MediaType.APPLICATION_JSON)
-  public Map<Integer, Long> getCurrentOffsets()
+  public AtomicInteger getCurrentOffsets()
   {
     return nextOffsets;
   }
@@ -328,7 +473,7 @@ public class JDBCIndexTask extends AbstractTask implements ChatHandler
   @GET
   @Path("/offsets/end")
   @Produces(MediaType.APPLICATION_JSON)
-  public Map<Integer, Long> getEndOffsets()
+  public AtomicInteger getEndOffsets()
   {
     return endOffsets;
   }
@@ -338,7 +483,7 @@ public class JDBCIndexTask extends AbstractTask implements ChatHandler
   @Consumes(MediaType.APPLICATION_JSON)
   @Produces(MediaType.APPLICATION_JSON)
   public Response setEndOffsets(
-      Map<Integer, Long> offsets,
+      AtomicInteger offsets,
       @QueryParam("resume") @DefaultValue("false") final boolean resume
   ) throws InterruptedException
   {
@@ -346,12 +491,12 @@ public class JDBCIndexTask extends AbstractTask implements ChatHandler
       return Response.status(Response.Status.BAD_REQUEST)
                      .entity("Request body must contain a map of { partition:endOffset }")
                      .build();
-    } else if (!endOffsets.keySet().containsAll(offsets.keySet())) {
+    } else if (!endOffsets.compareAndSet(endOffsets.get(), offsets.get())) {
       return Response.status(Response.Status.BAD_REQUEST)
                      .entity(
                          String.format(
                              "Request contains partitions not being handled by this task, my partitions: %s",
-                             endOffsets.keySet()
+                             endOffsets.get()
                          )
                      )
                      .build();
@@ -365,21 +510,7 @@ public class JDBCIndexTask extends AbstractTask implements ChatHandler
                        .build();
       }
 
-      for (Map.Entry<Integer, Long> entry : offsets.entrySet()) {
-        if (entry.getValue().compareTo(nextOffsets.get(entry.getKey())) < 0) {
-          return Response.status(Response.Status.BAD_REQUEST)
-                         .entity(
-                             String.format(
-                                 "End offset must be >= current offset for partition [%s] (current: %s)",
-                                 entry.getKey(),
-                                 nextOffsets.get(entry.getKey())
-                             )
-                         )
-                         .build();
-        }
-      }
-
-      endOffsets.putAll(offsets);
+      endOffsets.set(offsets.get());
       log.info("endOffsets changed to %s", endOffsets);
     }
     finally {
@@ -532,19 +663,18 @@ public class JDBCIndexTask extends AbstractTask implements ChatHandler
   }
 
 
-
   /**
    * Checks if the pauseRequested flag was set and if so blocks:
    * a) if pauseMillis == PAUSE_FOREVER, until pauseRequested is cleared
    * b) if pauseMillis != PAUSE_FOREVER, until pauseMillis elapses -or- pauseRequested is cleared
-   * <p/>
+   * <p>
    * If pauseMillis is changed while paused, the new pause timeout will be applied. This allows adjustment of the
    * pause timeout (making a timed pause into an indefinite pause and vice versa is valid) without having to resume
    * and ensures that the loop continues to stay paused without ingesting any new events. You will need to signal
    * shouldResume after adjusting pauseMillis for the new value to take effect.
-   * <p/>
+   * <p>
    * Sets paused = true and signals paused so callers can be notified when the pause command has been accepted.
-   * <p/>
+   * <p>
    * Additionally, pauses if all partitions assignments have been read and pauseAfterRead flag is set.
    *
    * @return true if a pause request was handled, false otherwise

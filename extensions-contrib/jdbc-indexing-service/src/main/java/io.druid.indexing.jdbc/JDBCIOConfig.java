@@ -35,7 +35,8 @@ public class JDBCIOConfig implements IOConfig
   private static final boolean DEFAULT_SKIP_OFFSET_GAPS = false;
 
   private final String baseSequenceName;
-  private final Map<String, String> consumerProperties;
+  private final String tableName;
+  private final Integer startPartitions;
   private final boolean useTransaction;
   private final boolean pauseAfterRead;
   private final Optional<DateTime> minimumMessageTime;
@@ -44,7 +45,8 @@ public class JDBCIOConfig implements IOConfig
   @JsonCreator
   public JDBCIOConfig(
       @JsonProperty("baseSequenceName") String baseSequenceName,
-      @JsonProperty("consumerProperties") Map<String, String> consumerProperties,
+      @JsonProperty("tableName") String tableName,
+      @JsonProperty("startPartitions") Integer startPartitions,
       @JsonProperty("useTransaction") Boolean useTransaction,
       @JsonProperty("pauseAfterRead") Boolean pauseAfterRead,
       @JsonProperty("minimumMessageTime") DateTime minimumMessageTime,
@@ -52,7 +54,8 @@ public class JDBCIOConfig implements IOConfig
   )
   {
     this.baseSequenceName = Preconditions.checkNotNull(baseSequenceName, "baseSequenceName");
-    this.consumerProperties = Preconditions.checkNotNull(consumerProperties, "consumerProperties");
+    this.tableName = Preconditions.checkNotNull(tableName, "tableName");
+    this.startPartitions = startPartitions != null ? startPartitions : 0;
     this.useTransaction = useTransaction != null ? useTransaction : DEFAULT_USE_TRANSACTION;
     this.pauseAfterRead = pauseAfterRead != null ? pauseAfterRead : DEFAULT_PAUSE_AFTER_READ;
     this.minimumMessageTime = Optional.fromNullable(minimumMessageTime);
@@ -61,15 +64,22 @@ public class JDBCIOConfig implements IOConfig
   }
 
   @JsonProperty
-  public String getBaseSequenceName()
+  public Integer getStartPartitions()
   {
-    return baseSequenceName;
+    return startPartitions;
   }
 
   @JsonProperty
-  public Map<String, String> getConsumerProperties()
+  public String getTableName()
   {
-    return consumerProperties;
+    return tableName;
+  }
+
+
+  @JsonProperty
+  public String getBaseSequenceName()
+  {
+    return baseSequenceName;
   }
 
   @JsonProperty
@@ -101,7 +111,7 @@ public class JDBCIOConfig implements IOConfig
   {
     return "JDBCIOConfig{" +
            "baseSequenceName='" + baseSequenceName + '\'' +
-           ", consumerProperties=" + consumerProperties +
+           ", tableName=" + tableName +
            ", useTransaction=" + useTransaction +
            ", pauseAfterRead=" + pauseAfterRead +
            ", minimumMessageTime=" + minimumMessageTime +
