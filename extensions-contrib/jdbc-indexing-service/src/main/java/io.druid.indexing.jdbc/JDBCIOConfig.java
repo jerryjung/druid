@@ -26,6 +26,7 @@ import com.google.common.base.Preconditions;
 import io.druid.segment.indexing.IOConfig;
 import org.joda.time.DateTime;
 
+import java.util.List;
 import java.util.Map;
 
 public class JDBCIOConfig implements IOConfig
@@ -36,31 +37,48 @@ public class JDBCIOConfig implements IOConfig
 
   private final String baseSequenceName;
   private final String tableName;
+  private final String user;
+  private final String password;
+  private final String connectURI;
+  private final String driverClass;
   private final Integer startPartitions;
   private final boolean useTransaction;
   private final boolean pauseAfterRead;
   private final Optional<DateTime> minimumMessageTime;
   private final boolean skipOffsetGaps;
+  private final String query;
+  private final List<String> columns;
 
   @JsonCreator
   public JDBCIOConfig(
       @JsonProperty("baseSequenceName") String baseSequenceName,
       @JsonProperty("tableName") String tableName,
+      @JsonProperty("user") String user,
+      @JsonProperty("password") String password,
+      @JsonProperty("connectURI") String connectURI,
+      @JsonProperty("driverClass") String driverClass,
       @JsonProperty("startPartitions") Integer startPartitions,
       @JsonProperty("useTransaction") Boolean useTransaction,
       @JsonProperty("pauseAfterRead") Boolean pauseAfterRead,
       @JsonProperty("minimumMessageTime") DateTime minimumMessageTime,
-      @JsonProperty("skipOffsetGaps") Boolean skipOffsetGaps
+      @JsonProperty("skipOffsetGaps") Boolean skipOffsetGaps,
+      @JsonProperty("query") String query,
+      @JsonProperty("columns") List<String> columns
   )
   {
     this.baseSequenceName = Preconditions.checkNotNull(baseSequenceName, "baseSequenceName");
     this.tableName = Preconditions.checkNotNull(tableName, "tableName");
+    this.user = Preconditions.checkNotNull(user, "user");
+    this.password = Preconditions.checkNotNull(password, "password");
+    this.connectURI = Preconditions.checkNotNull(connectURI, "connectURI");
+    this.driverClass = Preconditions.checkNotNull(driverClass, "driverClass");
     this.startPartitions = startPartitions != null ? startPartitions : 0;
     this.useTransaction = useTransaction != null ? useTransaction : DEFAULT_USE_TRANSACTION;
     this.pauseAfterRead = pauseAfterRead != null ? pauseAfterRead : DEFAULT_PAUSE_AFTER_READ;
     this.minimumMessageTime = Optional.fromNullable(minimumMessageTime);
     this.skipOffsetGaps = skipOffsetGaps != null ? skipOffsetGaps : DEFAULT_SKIP_OFFSET_GAPS;
-
+    this.query = Preconditions.checkNotNull(query, "query");
+    this.columns = columns;
   }
 
   @JsonProperty
@@ -75,6 +93,29 @@ public class JDBCIOConfig implements IOConfig
     return tableName;
   }
 
+  @JsonProperty
+  public String getUser()
+  {
+    return user;
+  }
+
+  @JsonProperty
+  public String getPassword()
+  {
+    return password;
+  }
+
+  @JsonProperty
+  public String getConnectURI()
+  {
+    return connectURI;
+  }
+
+  @JsonProperty
+  public String getDriverClass()
+  {
+    return driverClass;
+  }
 
   @JsonProperty
   public String getBaseSequenceName()
@@ -106,16 +147,33 @@ public class JDBCIOConfig implements IOConfig
     return skipOffsetGaps;
   }
 
+  @JsonProperty
+  public String getQuery()
+  {
+    return query;
+  }
+  @JsonProperty
+  public List<String> getColumns()
+  {
+    return columns;
+  }
+
   @Override
   public String toString()
   {
     return "JDBCIOConfig{" +
            "baseSequenceName='" + baseSequenceName + '\'' +
-           ", tableName=" + tableName +
+           ", tableName='" + tableName + '\'' +
+           ", user='" + user + '\'' +
+           ", password='" + password + '\'' +
+           ", connectURI='" + connectURI + '\'' +
+           ", driverClass='" + driverClass + '\'' +
+           ", startPartitions=" + startPartitions +
            ", useTransaction=" + useTransaction +
            ", pauseAfterRead=" + pauseAfterRead +
            ", minimumMessageTime=" + minimumMessageTime +
            ", skipOffsetGaps=" + skipOffsetGaps +
+           ", query='" + query + '\'' +
            '}';
   }
 }

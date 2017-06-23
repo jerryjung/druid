@@ -25,7 +25,6 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.annotations.VisibleForTesting;
-import com.google.common.base.Function;
 import com.google.common.base.Joiner;
 import com.google.common.base.Optional;
 import com.google.common.base.Preconditions;
@@ -33,25 +32,25 @@ import com.google.common.base.Supplier;
 import com.google.common.base.Throwables;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
-import com.google.common.collect.Iterables;
+import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
-import com.google.common.collect.Sets;
 import com.google.common.primitives.Ints;
 import com.metamx.emitter.EmittingLogger;
 import io.druid.data.input.Committer;
 import io.druid.data.input.InputRow;
+import io.druid.data.input.impl.DimensionSchema;
 import io.druid.data.input.impl.InputRowParser;
+import io.druid.data.input.impl.MapInputRowParser;
+import io.druid.data.input.impl.ParseSpec;
 import io.druid.indexing.appenderator.ActionBasedSegmentAllocator;
 import io.druid.indexing.appenderator.ActionBasedUsedSegmentChecker;
 import io.druid.indexing.common.TaskStatus;
 import io.druid.indexing.common.TaskToolbox;
-import io.druid.indexing.common.actions.SegmentTransactionalInsertAction;
 import io.druid.indexing.common.actions.TaskActionClient;
 import io.druid.indexing.common.task.AbstractTask;
 import io.druid.indexing.common.task.TaskResource;
 import io.druid.java.util.common.ISE;
 import io.druid.java.util.common.guava.Sequence;
-import io.druid.java.util.common.parsers.ParseException;
 import io.druid.query.DruidMetrics;
 import io.druid.query.NoopQueryRunner;
 import io.druid.query.Query;
@@ -64,14 +63,19 @@ import io.druid.segment.realtime.FireDepartmentMetrics;
 import io.druid.segment.realtime.RealtimeMetricsMonitor;
 import io.druid.segment.realtime.appenderator.Appenderator;
 import io.druid.segment.realtime.appenderator.AppenderatorDriver;
-import io.druid.segment.realtime.appenderator.AppenderatorDriverAddResult;
 import io.druid.segment.realtime.appenderator.Appenderators;
-import io.druid.segment.realtime.appenderator.SegmentsAndMetadata;
-import io.druid.segment.realtime.appenderator.TransactionalSegmentPublisher;
 import io.druid.segment.realtime.firehose.ChatHandler;
 import io.druid.segment.realtime.firehose.ChatHandlerProvider;
-import io.druid.timeline.DataSegment;
+import org.apache.commons.dbcp2.BasicDataSource;
+import org.apache.commons.lang.StringUtils;
 import org.joda.time.DateTime;
+import org.skife.jdbi.v2.DBI;
+import org.skife.jdbi.v2.Handle;
+import org.skife.jdbi.v2.ResultIterator;
+import org.skife.jdbi.v2.StatementContext;
+import org.skife.jdbi.v2.tweak.ResultSetMapper;
+import static java.sql.Types.*;
+
 
 import javax.ws.rs.Consumes;
 import javax.ws.rs.DefaultValue;
@@ -83,10 +87,13 @@ import javax.ws.rs.QueryParam;
 import javax.ws.rs.core.MediaType;
 import javax.ws.rs.core.Response;
 import java.nio.ByteBuffer;
+import java.sql.ResultSet;
+import java.sql.ResultSetMetaData;
+import java.sql.SQLException;
+import java.util.List;
 import java.util.Map;
 import java.util.Random;
 import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -115,7 +122,7 @@ public class JDBCIndexTask extends AbstractTask implements ChatHandler
   private static final String METADATA_NEXT_PARTITIONS = "nextPartitions";
 
   private final DataSchema dataSchema;
-  private final InputRowParser<ByteBuffer> parser;
+  private final MapInputRowParser parser;
   private final JDBCTuningConfig tuningConfig;
   private final JDBCIOConfig ioConfig;
   private final Optional<ChatHandlerProvider> chatHandlerProvider;
@@ -132,6 +139,8 @@ public class JDBCIndexTask extends AbstractTask implements ChatHandler
   private volatile Thread runThread = null;
   private volatile boolean stopRequested = false;
   private volatile boolean publishOnStop = false;
+  private final String DEFAULT_NULLSTRING = "";
+  private final float DEFAULT_NULLNUMERIC = 0;
 
   // The pause lock and associated conditions are to support coordination between the Jetty threads and the main
   // ingestion loop. The goal is to provide callers of the API a guarantee that if pause() returns successfully
@@ -194,7 +203,7 @@ public class JDBCIndexTask extends AbstractTask implements ChatHandler
     );
 
     this.dataSchema = Preconditions.checkNotNull(dataSchema, "dataSchema");
-    this.parser = Preconditions.checkNotNull((InputRowParser<ByteBuffer>) dataSchema.getParser(), "parser");
+    this.parser = Preconditions.checkNotNull((MapInputRowParser) dataSchema.getParser(), "parser");
     this.tuningConfig = Preconditions.checkNotNull(tuningConfig, "tuningConfig");
     this.ioConfig = Preconditions.checkNotNull(ioConfig, "ioConfig");
     this.chatHandlerProvider = Optional.fromNullable(chatHandlerProvider);
@@ -279,10 +288,22 @@ public class JDBCIndexTask extends AbstractTask implements ChatHandler
         )
     );
 
+    BasicDataSource dataSource = new BasicDataSource();
+    dataSource.setUsername(ioConfig.getUser());
+    dataSource.setPassword(ioConfig.getPassword());
+    dataSource.setUrl(ioConfig.getConnectURI());
 
+    dataSource.setDriverClassLoader(getClass().getClassLoader());
+    if (!StringUtils.isEmpty(ioConfig.getDriverClass())) {
+      dataSource.setDriverClassName(ioConfig.getDriverClass());
+    }
+
+    final Handle handle = new DBI(dataSource).open();
     try (
         final Appenderator appenderator0 = newAppenderator(fireDepartmentMetrics, toolbox);
         final AppenderatorDriver driver = newDriver(appenderator0, toolbox, fireDepartmentMetrics)
+
+
     ) {
       toolbox.getDataSegmentServerAnnouncer().announce();
       appenderator = appenderator0;
@@ -336,50 +357,147 @@ public class JDBCIndexTask extends AbstractTask implements ChatHandler
       status = Status.READING;
       Integer assignment = nextOffsets.get();
       boolean stillReading = !assignment.equals(0);
+      final String query = (table != null) ? makeQuery(ioConfig.getColumns()) : ioConfig.getQuery();
+      org.skife.jdbi.v2.Query<Map<String, Object>> dbiQuery = handle.createQuery(query);
 
+      final ResultIterator<InputRow> rowIterator =dbiQuery.map(
+          new ResultSetMapper<InputRow>()
+          {
+            List<String> queryColumns = (ioConfig.getColumns() == null) ? Lists.<String>newArrayList() : ioConfig.getColumns();
+            List<Boolean> columnIsNumeric = Lists.newArrayList();
 
-      try {
-        while (stillReading) {
-          if (stopRequested) {
-            break;
+            @Override
+            public InputRow map(
+                final int index,
+                final ResultSet r,
+                final StatementContext ctx
+            ) throws SQLException
+            {
+              try {
+                if (queryColumns.size() == 0) {
+                  ResultSetMetaData metadata = r.getMetaData();
+                  for (int idx = 1; idx <= metadata.getColumnCount(); idx++) {
+                    queryColumns.add(metadata.getColumnName(idx));
+                  }
+                  Preconditions.checkArgument(
+                      queryColumns.size() > 0,
+                      String.format("No column in table [%s]", table)
+                  );
+                  verifyParserSpec(parser.getParseSpec(), queryColumns);
+                }
+                if (columnIsNumeric.size() == 0) {
+                  ResultSetMetaData metadata = r.getMetaData();
+                  Preconditions.checkArgument(
+                      metadata.getColumnCount() >= queryColumns.size(),
+                      String.format("number of column names [%d] exceeds the actual number of returning column values [%d]",
+                                    queryColumns.size(),
+                                    metadata.getColumnCount()
+                      )
+                  );
+                  columnIsNumeric.add(false); // dummy to make start index to 1
+                  for (int idx = 1; idx <= metadata.getColumnCount(); idx++) {
+                    boolean isNumeric = false;
+                    int type = metadata.getColumnType(idx);
+                    switch (type) {
+                      case BIGINT:
+                      case DECIMAL:
+                      case DOUBLE:
+                      case FLOAT:
+                      case INTEGER:
+                      case NUMERIC:
+                      case SMALLINT:
+                      case TINYINT:
+                        isNumeric = true;
+                        break;
+                    }
+                    columnIsNumeric.add(isNumeric);
+                  }
+                }
+                final Map<String, Object> columnMap = Maps.newHashMap();
+                int columnIdx = 1;
+                for (String column : queryColumns) {
+                  Object objToPut = null;
+                  if (table != null) {
+                    objToPut = r.getObject(column);
+                  } else {
+                    objToPut = r.getObject(columnIdx);
+                  }
+                  columnMap.put(
+                      column,
+                      objToPut == null ? columnIsNumeric.get(columnIdx):objToPut
+                  );
+
+                  columnIdx++;
+                }
+                return parser.parse(columnMap);
+
+              }
+              catch (IllegalArgumentException e) {
+                throw new SQLException(e);
+              }
+            }
           }
+    ).iterator();
 
-          fireDepartmentMetrics.incrementProcessed();
+
+      //TODO::: query
+
+
+    try {
+      while (stillReading) {
+        if (stopRequested) {
+          break;
         }
-      }
-      finally {
-        driver.persist(committerSupplier.get()); // persist pending data
-      }
 
-
-    }
-    catch (InterruptedException | RejectedExecutionException e) {
-      // handle the InterruptedException that gets wrapped in a RejectedExecutionException
-      if (e instanceof RejectedExecutionException
-          && (e.getCause() == null || !(e.getCause() instanceof InterruptedException))) {
-        throw e;
+        fireDepartmentMetrics.incrementProcessed();
       }
-
-      // if we were interrupted because we were asked to stop, handle the exception and return success, else rethrow
-      if (!stopRequested) {
-        Thread.currentThread().interrupt();
-        throw e;
-      }
-
-      log.info("The task was asked to stop before completing");
     }
     finally {
-      if (chatHandlerProvider.isPresent()) {
-        chatHandlerProvider.get().unregister(getId());
-      }
+      driver.persist(committerSupplier.get()); // persist pending data
     }
 
-    toolbox.getDataSegmentServerAnnouncer().unannounce();
 
-
-    //TODO::implement
-    return success();
   }
+
+  catch(InterruptedException|
+  RejectedExecutionException e
+  )
+
+  {
+    // handle the InterruptedException that gets wrapped in a RejectedExecutionException
+    if (e instanceof RejectedExecutionException
+        && (e.getCause() == null || !(e.getCause() instanceof InterruptedException))) {
+      throw e;
+    }
+
+    // if we were interrupted because we were asked to stop, handle the exception and return success, else rethrow
+    if (!stopRequested) {
+      Thread.currentThread().interrupt();
+      throw e;
+    }
+
+    log.info("The task was asked to stop before completing");
+  }
+
+  finally
+
+  {
+    if (chatHandlerProvider.isPresent()) {
+      chatHandlerProvider.get().unregister(getId());
+    }
+  }
+
+  toolbox.getDataSegmentServerAnnouncer().
+
+  unannounce();
+
+
+  //TODO::implement
+  return
+
+  success();
+
+}
 
   @Override
   public boolean canRestore()
@@ -721,5 +839,29 @@ public class JDBCIndexTask extends AbstractTask implements ChatHandler
     }
 
     return false;
+  }
+
+  private String makeQuery(List<String> requiredFields)
+  {
+    if (requiredFields == null) {
+      return new StringBuilder("SELECT *  FROM ").append(ioConfig.getTableName()).toString();
+    }
+    return new StringBuilder("SELECT ").append(StringUtils.join(requiredFields, ','))
+                                       .append(" from ")
+                                       .append(ioConfig.getTableName())
+                                       .toString();
+  }
+
+  private void verifyParserSpec(ParseSpec parseSpec, List<String> storedColumns) throws IllegalArgumentException
+  {
+    String tsColumn = parseSpec.getTimestampSpec().getTimestampColumn();
+    Preconditions.checkArgument(storedColumns.contains(tsColumn),
+                                String.format("timestamp column %s does not exist in table %s", tsColumn, ioConfig.getTableName()));
+
+    for (DimensionSchema dim: parseSpec.getDimensionsSpec().getDimensions())
+    {
+      Preconditions.checkArgument(storedColumns.contains(dim.getName()),
+                                  String.format("dimension column %s does not exist in table %s", dim, ioConfig.getTableName()));
+    }
   }
 }

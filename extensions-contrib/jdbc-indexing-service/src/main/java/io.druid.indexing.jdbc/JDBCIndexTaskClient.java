@@ -112,7 +112,7 @@ public class JDBCIndexTaskClient
         Execs.multiThreaded(
             numThreads,
             String.format(
-                "KafkaIndexTaskClient-%s-%%d",
+                "JDBCIndexTaskClient-%s-%%d",
                 dataSource
             )
         )

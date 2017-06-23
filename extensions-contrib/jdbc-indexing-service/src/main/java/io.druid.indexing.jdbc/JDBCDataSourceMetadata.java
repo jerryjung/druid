@@ -40,6 +40,19 @@ public class JDBCDataSourceMetadata implements DataSourceMetadata
     this.offsets = offsets;
   }
 
+
+  @JsonProperty("table")
+  public String getTable()
+  {
+    return table;
+  }
+
+  @JsonProperty("offsets")
+  public Integer getOffsets()
+  {
+    return offsets;
+  }
+
   @Override
   public boolean isValidStart()
   {
