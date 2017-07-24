@@ -37,14 +37,15 @@ import com.google.common.io.Files;
 import com.google.common.util.concurrent.ListenableFuture;
 import com.google.common.util.concurrent.ListeningExecutorService;
 import com.google.common.util.concurrent.MoreExecutors;
+//CHECKSTYLE.OFF: Regexp
 import com.metamx.common.logger.Logger;
+//CHECKSTYLE.ON: Regexp
 import com.metamx.emitter.EmittingLogger;
 import com.metamx.emitter.core.LoggingEmitter;
 import com.metamx.emitter.service.ServiceEmitter;
 import com.metamx.metrics.MonitorScheduler;
 import io.druid.client.cache.CacheConfig;
 import io.druid.client.cache.MapCache;
-import io.druid.java.util.common.StringUtils;
 import io.druid.concurrent.Execs;
 import io.druid.data.input.impl.DimensionsSpec;
 import io.druid.data.input.impl.JSONParseSpec;
@@ -75,6 +76,7 @@ import io.druid.indexing.test.TestDataSegmentKiller;
 import io.druid.jackson.DefaultObjectMapper;
 import io.druid.java.util.common.CompressionUtils;
 import io.druid.java.util.common.ISE;
+import io.druid.java.util.common.StringUtils;
 import io.druid.java.util.common.granularity.Granularities;
 import io.druid.java.util.common.guava.Sequences;
 import io.druid.metadata.EntryExistsException;
@@ -131,8 +133,6 @@ import org.junit.BeforeClass;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
-import org.junit.runner.RunWith;
-import org.junit.runners.Parameterized;
 
 import java.io.File;
 import java.io.IOException;
@@ -146,7 +146,6 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
-@RunWith(Parameterized.class)
 public class KafkaIndexTaskTest
 {
   private static final Logger log = new Logger(KafkaIndexTaskTest.class);
@@ -160,7 +159,6 @@ public class KafkaIndexTaskTest
   private static int topicPostfix;
 
   private final List<Task> runningTasks = Lists.newArrayList();
-  private final boolean buildV9Directly;
 
   private long handoffConditionTimeout = 0;
   private boolean reportParseExceptions = false;
@@ -220,17 +218,6 @@ public class KafkaIndexTaskTest
 
   @Rule
   public final TemporaryFolder tempFolder = new TemporaryFolder();
-
-  @Parameterized.Parameters(name = "buildV9Directly = {0}")
-  public static Iterable<Object[]> constructorFeeder()
-  {
-    return ImmutableList.of(new Object[]{true}, new Object[]{false});
-  }
-
-  public KafkaIndexTaskTest(boolean buildV9Directly)
-  {
-    this.buildV9Directly = buildV9Directly;
-  }
 
   @Rule
   public final TestDerbyConnector.DerbyConnectorRule derby = new TestDerbyConnector.DerbyConnectorRule();
@@ -1401,7 +1388,7 @@ public class KafkaIndexTaskTest
         null,
         null,
         null,
-        buildV9Directly,
+        true,
         reportParseExceptions,
         handoffConditionTimeout,
         resetOffsetAutomatically
@@ -1491,7 +1478,7 @@ public class KafkaIndexTaskTest
         derby.metadataTablesConfigSupplier().get(),
         derbyConnector
     );
-    taskLockbox = new TaskLockbox(taskStorage);
+    taskLockbox = new TaskLockbox(taskStorage, 3000);
     final TaskActionToolbox taskActionToolbox = new TaskActionToolbox(
         taskLockbox,
         metadataStorageCoordinator,
@@ -1549,7 +1536,7 @@ public class KafkaIndexTaskTest
         new TestDataSegmentAnnouncer(),
         EasyMock.createNiceMock(DataSegmentServerAnnouncer.class),
         handoffNotifierFactory,
-        makeTimeseriesOnlyConglomerate(),
+        this::makeTimeseriesOnlyConglomerate,
         MoreExecutors.sameThreadExecutor(), // queryExecutorService
         EasyMock.createMock(MonitorScheduler.class),
         new SegmentLoaderFactory(
@@ -1566,7 +1553,6 @@ public class KafkaIndexTaskTest
             )
         ),
         testUtils.getTestObjectMapper(),
-        testUtils.getTestIndexMerger(),
         testUtils.getTestIndexIO(),
         MapCache.create(1024),
         new CacheConfig(),
@@ -1609,7 +1595,7 @@ public class KafkaIndexTaskTest
   private List<String> readSegmentDim1(final SegmentDescriptor descriptor) throws IOException
   {
     File indexZip = new File(
-        String.format(
+        StringUtils.format(
             "%s/%s/%s_%s/%s/%d/index.zip",
             getSegmentDirectory(),
             DATA_SCHEMA.getDataSource(),
@@ -1621,7 +1607,7 @@ public class KafkaIndexTaskTest
     );
     File outputLocation = new File(
         directory,
-        String.format(
+        StringUtils.format(
             "%s_%s_%s_%s",
             descriptor.getInterval().getStart(),
             descriptor.getInterval().getEnd(),

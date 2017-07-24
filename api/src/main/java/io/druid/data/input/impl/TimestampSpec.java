@@ -98,6 +98,7 @@ public class TimestampSpec
   {
     DateTime extracted = missingValue;
     if (input != null) {
+      // Check if the input is equal to the last input, so we don't need to parse it again
       if (input.equals(parseCtx.lastTimeObject)) {
         extracted = parseCtx.lastDateTime;
       } else {
@@ -154,7 +155,8 @@ public class TimestampSpec
 
   //simple merge strategy on timestampSpec that checks if all are equal or else
   //returns null. this can be improved in future but is good enough for most use-cases.
-  public static TimestampSpec mergeTimestampSpec(List<TimestampSpec> toMerge) {
+  public static TimestampSpec mergeTimestampSpec(List<TimestampSpec> toMerge)
+  {
     if (toMerge == null || toMerge.size() == 0) {
       return null;
     }

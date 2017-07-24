@@ -31,7 +31,9 @@ import com.google.common.collect.Sets;
 import com.google.common.util.concurrent.ListenableFuture;
 import com.google.common.util.concurrent.ListeningExecutorService;
 import com.google.common.util.concurrent.MoreExecutors;
+//CHECKSTYLE.OFF: Regexp
 import com.metamx.common.logger.Logger;
+//CHECKSTYLE.ON: Regexp
 import com.metamx.emitter.EmittingLogger;
 import com.metamx.emitter.core.LoggingEmitter;
 import com.metamx.emitter.service.ServiceEmitter;
@@ -116,22 +118,18 @@ import org.junit.internal.matchers.ThrowableCauseMatcher;
 import org.junit.internal.matchers.ThrowableMessageMatcher;
 import org.junit.rules.ExpectedException;
 import org.junit.rules.TemporaryFolder;
-import org.junit.runner.RunWith;
-import org.junit.runners.Parameterized;
 
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executor;
 
-@RunWith(Parameterized.class)
 public class RealtimeIndexTaskTest
 {
   private static final Logger log = new Logger(RealtimeIndexTaskTest.class);
@@ -232,25 +230,9 @@ public class RealtimeIndexTaskTest
   @Rule
   public final TemporaryFolder tempFolder = new TemporaryFolder();
 
-  private final boolean buildV9Directly;
-
   private DateTime now;
   private ListeningExecutorService taskExec;
   private Map<SegmentDescriptor, Pair<Executor, Runnable>> handOffCallbacks;
-
-  @Parameterized.Parameters(name = "buildV9Directly = {0}")
-  public static Collection<?> constructorFeeder() throws IOException
-  {
-    return ImmutableList.of(
-        new Object[]{true},
-        new Object[]{false}
-    );
-  }
-
-  public RealtimeIndexTaskTest(boolean buildV9Directly)
-  {
-    this.buildV9Directly = buildV9Directly;
-  }
 
   @Before
   public void setUp()
@@ -801,7 +783,7 @@ public class RealtimeIndexTaskTest
 
     // Corrupt the data:
     final File smooshFile = new File(
-        String.format(
+        StringUtils.format(
             "%s/persistent/task/%s/work/persist/%s/%s_%s/0/00000.smoosh",
             directory,
             task1.getId(),
@@ -907,7 +889,7 @@ public class RealtimeIndexTaskTest
         null,
         null,
         null,
-        buildV9Directly,
+        true,
         0,
         0,
         reportParseExceptions,
@@ -951,7 +933,7 @@ public class RealtimeIndexTaskTest
   )
   {
     final TaskConfig taskConfig = new TaskConfig(directory.getPath(), null, null, 50000, null, false, null, null);
-    final TaskLockbox taskLockbox = new TaskLockbox(taskStorage);
+    final TaskLockbox taskLockbox = new TaskLockbox(taskStorage, 300);
     try {
       taskStorage.insert(task, TaskStatus.running(task.getId()));
     }
@@ -1045,7 +1027,7 @@ public class RealtimeIndexTaskTest
         new TestDataSegmentAnnouncer(),
         EasyMock.createNiceMock(DataSegmentServerAnnouncer.class),
         handoffNotifierFactory,
-        conglomerate,
+        () -> conglomerate,
         MoreExecutors.sameThreadExecutor(), // queryExecutorService
         EasyMock.createMock(MonitorScheduler.class),
         new SegmentLoaderFactory(
@@ -1062,7 +1044,6 @@ public class RealtimeIndexTaskTest
             )
         ),
         testUtils.getTestObjectMapper(),
-        testUtils.getTestIndexMerger(),
         testUtils.getTestIndexIO(),
         MapCache.create(1024),
         new CacheConfig(),

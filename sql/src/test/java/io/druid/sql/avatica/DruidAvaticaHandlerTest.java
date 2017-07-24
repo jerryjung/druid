@@ -31,6 +31,7 @@ import com.google.common.util.concurrent.ListenableFuture;
 import com.google.common.util.concurrent.ListeningExecutorService;
 import com.google.common.util.concurrent.MoreExecutors;
 import io.druid.java.util.common.Pair;
+import io.druid.java.util.common.StringUtils;
 import io.druid.math.expr.ExprMacroTable;
 import io.druid.server.DruidNode;
 import io.druid.server.initialization.ServerConfig;
@@ -38,11 +39,14 @@ import io.druid.sql.calcite.planner.Calcites;
 import io.druid.sql.calcite.planner.DruidOperatorTable;
 import io.druid.sql.calcite.planner.PlannerConfig;
 import io.druid.sql.calcite.planner.PlannerFactory;
+import io.druid.sql.calcite.schema.DruidSchema;
 import io.druid.sql.calcite.util.CalciteTests;
 import io.druid.sql.calcite.util.QueryLogHook;
 import io.druid.sql.calcite.util.SpecificSegmentsQuerySegmentWalker;
 import org.apache.calcite.avatica.AvaticaClientRuntimeException;
-import org.apache.calcite.schema.SchemaPlus;
+import org.apache.calcite.avatica.Meta;
+import org.apache.calcite.avatica.MissingResultsException;
+import org.apache.calcite.avatica.NoSuchStatementException;
 import org.eclipse.jetty.server.Server;
 import org.joda.time.DateTime;
 import org.joda.time.DateTimeZone;
@@ -112,28 +116,23 @@ public class DruidAvaticaHandlerTest
     Calcites.setSystemProperties();
     walker = CalciteTests.createMockWalker(temporaryFolder.newFolder());
     final PlannerConfig plannerConfig = new PlannerConfig();
-    final SchemaPlus rootSchema = Calcites.createRootSchema(
-        CalciteTests.createMockSchema(
-            walker,
-            plannerConfig
-        )
-    );
+    final DruidSchema druidSchema = CalciteTests.createMockSchema(walker, plannerConfig);
     final DruidOperatorTable operatorTable = CalciteTests.createOperatorTable();
     final ExprMacroTable macroTable = CalciteTests.createExprMacroTable();
     druidMeta = new DruidMeta(
-        new PlannerFactory(rootSchema, walker, operatorTable, macroTable, plannerConfig, new ServerConfig()),
+        new PlannerFactory(druidSchema, walker, operatorTable, macroTable, plannerConfig, new ServerConfig()),
         AVATICA_CONFIG
     );
     final DruidAvaticaHandler handler = new DruidAvaticaHandler(
         druidMeta,
-        new DruidNode("dummy", "dummy", 1),
+        new DruidNode("dummy", "dummy", 1, null, new ServerConfig()),
         new AvaticaMonitor()
     );
     final int port = new Random().nextInt(9999) + 10000;
     server = new Server(new InetSocketAddress("127.0.0.1", port));
     server.setHandler(handler);
     server.start();
-    url = String.format(
+    url = StringUtils.format(
         "jdbc:avatica:remote:url=http://127.0.0.1:%d%s",
         port,
         DruidAvaticaHandler.AVATICA_PATH
@@ -251,7 +250,7 @@ public class DruidAvaticaHandlerTest
         ImmutableList.of(
             ImmutableMap.of(
                 "PLAN",
-                "DruidQueryRel(dataSource=[foo], dimensions=[[]], aggregations=[[Aggregation{aggregatorFactories=[CountAggregatorFactory{name='a0'}], postAggregator=null, finalizingPostAggregatorFactory=null}]])\n"
+                "DruidQueryRel(dataSource=[foo], dimensions=[[]], aggregations=[[Aggregation{virtualColumns=[], aggregatorFactories=[CountAggregatorFactory{name='a0'}], postAggregator=null}]])\n"
             )
         ),
         getRows(resultSet)
@@ -336,7 +335,7 @@ public class DruidAvaticaHandlerTest
                 Pair.of("COLUMN_NAME", "dim1"),
                 Pair.of("DATA_TYPE", Types.VARCHAR),
                 Pair.of("TYPE_NAME", "VARCHAR"),
-                Pair.of("IS_NULLABLE", "NO")
+                Pair.of("IS_NULLABLE", "YES")
             ),
             ROW(
                 Pair.of("TABLE_SCHEM", "druid"),
@@ -344,14 +343,14 @@ public class DruidAvaticaHandlerTest
                 Pair.of("COLUMN_NAME", "dim2"),
                 Pair.of("DATA_TYPE", Types.VARCHAR),
                 Pair.of("TYPE_NAME", "VARCHAR"),
-                Pair.of("IS_NULLABLE", "NO")
+                Pair.of("IS_NULLABLE", "YES")
             ),
             ROW(
                 Pair.of("TABLE_SCHEM", "druid"),
                 Pair.of("TABLE_NAME", "foo"),
                 Pair.of("COLUMN_NAME", "m1"),
-                Pair.of("DATA_TYPE", Types.FLOAT),
-                Pair.of("TYPE_NAME", "FLOAT"),
+                Pair.of("DATA_TYPE", Types.DOUBLE),
+                Pair.of("TYPE_NAME", "DOUBLE"),
                 Pair.of("IS_NULLABLE", "NO")
             ),
             ROW(
@@ -378,7 +377,7 @@ public class DruidAvaticaHandlerTest
         Executors.newFixedThreadPool(AVATICA_CONFIG.getMaxStatementsPerConnection())
     );
     for (int i = 0; i < 2000; i++) {
-      final String query = String.format("SELECT COUNT(*) + %s AS ci FROM foo", i);
+      final String query = StringUtils.format("SELECT COUNT(*) + %s AS ci FROM foo", i);
       futures.add(
           exec.submit(() -> {
             try (
@@ -513,6 +512,89 @@ public class DruidAvaticaHandlerTest
 
     final Connection connection3 = DriverManager.getConnection(url);
     Assert.assertTrue(true);
+  }
+
+  @Test
+  public void testMaxRowsPerFrame() throws Exception
+  {
+    final AvaticaServerConfig smallFrameConfig = new AvaticaServerConfig()
+    {
+      @Override
+      public int getMaxConnections()
+      {
+        return 2;
+      }
+
+      @Override
+      public int getMaxStatementsPerConnection()
+      {
+        return 4;
+      }
+
+      @Override
+      public int getMaxRowsPerFrame()
+      {
+        return 2;
+      }
+    };
+
+    final PlannerConfig plannerConfig = new PlannerConfig();
+    final DruidSchema druidSchema = CalciteTests.createMockSchema(walker, plannerConfig);
+    final DruidOperatorTable operatorTable = CalciteTests.createOperatorTable();
+    final ExprMacroTable macroTable = CalciteTests.createExprMacroTable();
+
+    final List<Meta.Frame> frames = new ArrayList<>();
+    DruidMeta smallFrameDruidMeta = new DruidMeta(
+        new PlannerFactory(druidSchema, walker, operatorTable, macroTable, plannerConfig, new ServerConfig()),
+        smallFrameConfig
+    )
+    {
+      @Override
+      public Frame fetch(
+          final StatementHandle statement,
+          final long offset,
+          final int fetchMaxRowCount
+      ) throws NoSuchStatementException, MissingResultsException
+      {
+        // overriding fetch allows us to track how many frames are processed after the first frame
+        Frame frame = super.fetch(statement, offset, fetchMaxRowCount);
+        frames.add(frame);
+        return frame;
+      }
+    };
+
+    final DruidAvaticaHandler handler = new DruidAvaticaHandler(
+        smallFrameDruidMeta,
+        new DruidNode("dummy", "dummy", 1, null, new ServerConfig()),
+        new AvaticaMonitor()
+    );
+    final int port = new Random().nextInt(9999) + 20000;
+    Server smallFrameServer = new Server(new InetSocketAddress("127.0.0.1", port));
+    smallFrameServer.setHandler(handler);
+    smallFrameServer.start();
+    String smallFrameUrl = StringUtils.format(
+        "jdbc:avatica:remote:url=http://127.0.0.1:%d%s",
+        port,
+        DruidAvaticaHandler.AVATICA_PATH
+    );
+    Connection smallFrameClient = DriverManager.getConnection(smallFrameUrl);
+
+    final ResultSet resultSet = smallFrameClient.createStatement().executeQuery(
+        "SELECT dim1 FROM druid.foo"
+    );
+    List<Map<String, Object>> rows = getRows(resultSet);
+    Assert.assertEquals(2, frames.size());
+    Assert.assertEquals(
+        ImmutableList.of(
+            ImmutableMap.of("dim1", ""),
+            ImmutableMap.of("dim1", "10.1"),
+            ImmutableMap.of("dim1", "2"),
+            ImmutableMap.of("dim1", "1"),
+            ImmutableMap.of("dim1", "def"),
+            ImmutableMap.of("dim1", "abc")
+        ),
+        rows
+    );
   }
 
   private static List<Map<String, Object>> getRows(final ResultSet resultSet) throws SQLException

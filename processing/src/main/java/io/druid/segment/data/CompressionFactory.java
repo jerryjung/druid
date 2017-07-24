@@ -24,6 +24,7 @@ import com.fasterxml.jackson.annotation.JsonValue;
 import com.google.common.base.Supplier;
 import com.google.common.collect.Maps;
 import io.druid.java.util.common.IAE;
+import io.druid.java.util.common.StringUtils;
 import io.druid.java.util.common.io.smoosh.SmooshedFileMapper;
 
 import java.io.IOException;
@@ -33,7 +34,7 @@ import java.nio.ByteOrder;
 import java.util.Map;
 
 /**
- * Compression of metrics is done by using a combination of {@link io.druid.segment.data.CompressedObjectStrategy.CompressionStrategy}
+ * Compression of metrics is done by using a combination of {@link CompressedObjectStrategy.CompressionStrategy}
  * and Encoding(such as {@link LongEncodingStrategy} for type Long). CompressionStrategy is unaware of the data type
  * and is based on byte operations. It must compress and decompress in block of bytes. Encoding refers to compression
  * method relies on data format, so a different set of Encodings exist for each data type.
@@ -137,13 +138,13 @@ public class CompressionFactory
     @Override
     public String toString()
     {
-      return this.name().toLowerCase();
+      return StringUtils.toLowerCase(this.name());
     }
 
     @JsonCreator
     public static LongEncodingStrategy fromString(String name)
     {
-      return valueOf(name.toUpperCase());
+      return valueOf(StringUtils.toUpperCase(name));
     }
   }
 
@@ -344,4 +345,34 @@ public class CompressionFactory
     }
   }
 
+  public static Supplier<IndexedDoubles> getDoubleSupplier(
+      int totalSize,
+      int sizePer,
+      ByteBuffer fromBuffer,
+      ByteOrder byteOrder,
+      CompressedObjectStrategy.CompressionStrategy strategy,
+      SmooshedFileMapper fileMapper
+  )
+  {
+    switch (strategy) {
+      case NONE:
+        return new EntireLayoutIndexedDoubleSupplier(totalSize, fromBuffer, byteOrder);
+      default:
+        return new BlockLayoutIndexedDoubleSupplier(totalSize, sizePer, fromBuffer, byteOrder, strategy, fileMapper);
+    }
+
+  }
+  public static DoubleSupplierSerializer getDoubleSerializer(
+      IOPeon ioPeon,
+      String filenameBase,
+      ByteOrder byteOrder,
+      CompressedObjectStrategy.CompressionStrategy compression
+  )
+  {
+    if (compression == CompressedObjectStrategy.CompressionStrategy.NONE) {
+      return new EntireLayoutDoubleSupplierSerializer(ioPeon, filenameBase, byteOrder);
+    } else {
+      return new BlockLayoutDoubleSupplierSerializer(ioPeon, filenameBase, byteOrder, compression);
+    }
+  }
 }

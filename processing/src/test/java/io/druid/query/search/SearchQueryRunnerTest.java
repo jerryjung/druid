@@ -23,7 +23,6 @@ import com.google.common.base.Suppliers;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Lists;
 import io.druid.data.input.MapBasedInputRow;
-import io.druid.java.util.common.granularity.Granularities;
 import io.druid.java.util.common.guava.Sequence;
 import io.druid.java.util.common.guava.Sequences;
 import io.druid.java.util.common.logger.Logger;
@@ -61,7 +60,6 @@ import io.druid.segment.column.Column;
 import io.druid.segment.column.ValueType;
 import io.druid.segment.incremental.IncrementalIndex;
 import io.druid.segment.incremental.IncrementalIndexSchema;
-import io.druid.segment.incremental.OnheapIncrementalIndex;
 import org.joda.time.DateTime;
 import org.joda.time.Interval;
 import org.junit.Assert;
@@ -702,7 +700,7 @@ public class SearchQueryRunnerTest
                                     .dimensions(
                                         new DefaultDimensionSpec(
                                             QueryRunnerTestHelper.indexMetric, QueryRunnerTestHelper.indexMetric,
-                                            ValueType.FLOAT
+                                            ValueType.DOUBLE
                                         )
                                     )
                                     .dataSource(QueryRunnerTestHelper.dataSource)
@@ -712,8 +710,8 @@ public class SearchQueryRunnerTest
                                     .build();
 
     List<SearchHit> expectedHits = Lists.newLinkedList();
-    expectedHits.add(new SearchHit(QueryRunnerTestHelper.indexMetric, "100.706055", 1));
-    expectedHits.add(new SearchHit(QueryRunnerTestHelper.indexMetric, "100.7756", 1));
+    expectedHits.add(new SearchHit(QueryRunnerTestHelper.indexMetric, "100.706057", 1));
+    expectedHits.add(new SearchHit(QueryRunnerTestHelper.indexMetric, "100.775597", 1));
     checkSearchQuery(searchQuery, expectedHits);
   }
 
@@ -737,21 +735,23 @@ public class SearchQueryRunnerTest
                                     .build();
 
     List<SearchHit> expectedHits = Lists.newLinkedList();
-    expectedHits.add(new SearchHit(QueryRunnerTestHelper.indexMetric, "super-100.7060546875", 1));
-    expectedHits.add(new SearchHit(QueryRunnerTestHelper.indexMetric, "super-100.77559661865234", 1));
+    expectedHits.add(new SearchHit(QueryRunnerTestHelper.indexMetric, "super-100.706057", 1));
+    expectedHits.add(new SearchHit(QueryRunnerTestHelper.indexMetric, "super-100.775597", 1));
     checkSearchQuery(searchQuery, expectedHits);
   }
 
   @Test
   public void testSearchWithNullValueInDimension() throws Exception
   {
-    IncrementalIndex<Aggregator> index = new OnheapIncrementalIndex(
-        new IncrementalIndexSchema.Builder()
-            .withQueryGranularity(Granularities.NONE)
-            .withMinTimestamp(new DateTime("2011-01-12T00:00:00.000Z").getMillis()).build(),
-        true,
-        10
-    );
+    IncrementalIndex<Aggregator> index = new IncrementalIndex.Builder()
+        .setIndexSchema(
+            new IncrementalIndexSchema.Builder()
+                .withMinTimestamp(new DateTime("2011-01-12T00:00:00.000Z").getMillis())
+                .build()
+        )
+        .setMaxRowCount(10)
+        .buildOnheap();
+
     index.add(
         new MapBasedInputRow(
             1481871600000L,

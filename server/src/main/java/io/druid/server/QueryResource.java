@@ -32,9 +32,11 @@ import com.google.inject.Inject;
 import com.metamx.emitter.EmittingLogger;
 import com.metamx.emitter.service.ServiceEmitter;
 import io.druid.client.DirectDruidClient;
+import io.druid.guice.LazySingleton;
 import io.druid.guice.annotations.Json;
 import io.druid.guice.annotations.Smile;
 import io.druid.java.util.common.ISE;
+import io.druid.java.util.common.StringUtils;
 import io.druid.java.util.common.guava.Sequence;
 import io.druid.java.util.common.guava.Sequences;
 import io.druid.java.util.common.guava.Yielder;
@@ -84,6 +86,7 @@ import java.util.concurrent.atomic.AtomicLong;
 
 /**
  */
+@LazySingleton
 @Path("/druid/v2/")
 public class QueryResource implements QueryCountStatsProvider
 {
@@ -93,8 +96,8 @@ public class QueryResource implements QueryCountStatsProvider
 
   protected static final int RESPONSE_CTX_HEADER_LEN_LIMIT = 7 * 1024;
 
-  public static final String HDR_IF_NONE_MATCH = "If-None-Match";
-  public static final String HDR_ETAG = "ETag";
+  public static final String HEADER_IF_NONE_MATCH = "If-None-Match";
+  public static final String HEADER_ETAG = "ETag";
 
   protected final QueryToolChestWarehouse warehouse;
   protected final ServerConfig config;
@@ -209,7 +212,7 @@ public class QueryResource implements QueryCountStatsProvider
       toolChest = warehouse.getToolChest(query);
 
       Thread.currentThread()
-            .setName(String.format("%s[%s_%s_%s]", currThreadName, query.getType(), query.getDataSource().getNames(), queryId));
+            .setName(StringUtils.format("%s[%s_%s_%s]", currThreadName, query.getType(), query.getDataSource().getNames(), queryId));
       if (log.isDebugEnabled()) {
         log.debug("Got query [%s]", query);
       }
@@ -232,16 +235,16 @@ public class QueryResource implements QueryCountStatsProvider
         }
       }
 
-      String prevEtag = req.getHeader(HDR_IF_NONE_MATCH);
+      String prevEtag = req.getHeader(HEADER_IF_NONE_MATCH);
       if (prevEtag != null) {
         query = query.withOverriddenContext(
-            ImmutableMap.of (HDR_IF_NONE_MATCH, prevEtag)
+            ImmutableMap.of (HEADER_IF_NONE_MATCH, prevEtag)
         );
       }
 
       final Sequence res = QueryPlus.wrap(query).run(texasRanger, responseContext);
 
-      if (prevEtag != null && prevEtag.equals(responseContext.get(HDR_ETAG))) {
+      if (prevEtag != null && prevEtag.equals(responseContext.get(HEADER_ETAG))) {
         return Response.notModified().build();
       }
 
@@ -281,11 +284,13 @@ public class QueryResource implements QueryCountStatsProvider
                       os.close();
 
                       success = true;
-                    } catch (Exception ex) {
+                    }
+                    catch (Exception ex) {
                       exceptionStr = ex.toString();
                       log.error(ex, "Unable to send query response.");
                       throw Throwables.propagate(ex);
-                    } finally {
+                    }
+                    finally {
                       try {
                         if (success) {
                           successfulQueryCount.incrementAndGet();
@@ -328,9 +333,11 @@ public class QueryResource implements QueryCountStatsProvider
                                 )
                             )
                         );
-                      } catch (Exception ex) {
+                      }
+                      catch (Exception ex) {
                         log.error(ex, "Unable to log query [%s]!", theQuery);
-                      } finally {
+                      }
+                      finally {
                         Thread.currentThread().setName(currThreadName);
                       }
                     }
@@ -340,9 +347,9 @@ public class QueryResource implements QueryCountStatsProvider
             )
             .header("X-Druid-Query-Id", queryId);
 
-        if (responseContext.get(HDR_ETAG) != null) {
-          builder.header(HDR_ETAG, responseContext.get(HDR_ETAG));
-          responseContext.remove(HDR_ETAG);
+        if (responseContext.get(HEADER_ETAG) != null) {
+          builder.header(HEADER_ETAG, responseContext.get(HEADER_ETAG));
+          responseContext.remove(HEADER_ETAG);
         }
 
         responseContext.remove(DirectDruidClient.QUERY_FAIL_TIME);

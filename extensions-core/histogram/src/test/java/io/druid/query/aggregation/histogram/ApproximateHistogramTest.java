@@ -21,6 +21,7 @@ package io.druid.query.aggregation.histogram;
 
 import com.google.common.collect.Iterators;
 import com.google.common.collect.Lists;
+import io.druid.java.util.common.StringUtils;
 import org.junit.Assert;
 import org.junit.Test;
 
@@ -254,7 +255,7 @@ public class ApproximateHistogramTest
       tFold += System.nanoTime() - t0;
     }
 
-    System.out.println(String.format("Average folds per second : %f", (double) count / (double) tFold * 1e9));
+    System.out.println(StringUtils.format("Average folds per second : %f", (double) count / (double) tFold * 1e9));
   }
 
   @Test
@@ -577,7 +578,9 @@ public class ApproximateHistogramTest
     );
   }
 
-  @Test public void testEmptyHistogram() {
+  @Test
+  public void testEmptyHistogram()
+  {
     ApproximateHistogram h = new ApproximateHistogram(50);
     Assert.assertArrayEquals(
         new float[]{Float.NaN, Float.NaN},

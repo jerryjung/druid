@@ -46,7 +46,6 @@ import io.druid.segment.IncrementalIndexSegment;
 import io.druid.segment.Segment;
 import io.druid.segment.TestHelper;
 import io.druid.segment.incremental.IncrementalIndex;
-import io.druid.segment.incremental.OnheapIncrementalIndex;
 import org.junit.Rule;
 import org.junit.Test;
 
@@ -106,7 +105,8 @@ public class GroupByQueryRunnerFactoryTest
                               )
                           )
                       );
-                    } catch (Exception e) {
+                    }
+                    catch (Exception e) {
                       Throwables.propagate(e);
                       return null;
                     }
@@ -129,17 +129,11 @@ public class GroupByQueryRunnerFactoryTest
 
   private Segment createSegment() throws Exception
   {
-    IncrementalIndex incrementalIndex = new OnheapIncrementalIndex(
-        0,
-        Granularities.NONE,
-        new AggregatorFactory[]{
-            new CountAggregatorFactory("count")
-        },
-        true,
-        true,
-        true,
-        5000
-    );
+    IncrementalIndex incrementalIndex = new IncrementalIndex.Builder()
+        .setSimpleTestingIndexSchema(new CountAggregatorFactory("count"))
+        .setConcurrentEventAdd(true)
+        .setMaxRowCount(5000)
+        .buildOnheap();
 
     StringInputRowParser parser = new StringInputRowParser(
         new CSVParseSpec(

@@ -41,6 +41,7 @@ import io.druid.data.input.Rows;
 import io.druid.indexer.hadoop.SegmentInputRow;
 import io.druid.java.util.common.IAE;
 import io.druid.java.util.common.ISE;
+import io.druid.java.util.common.StringUtils;
 import io.druid.java.util.common.logger.Logger;
 import io.druid.query.aggregation.AggregatorFactory;
 import io.druid.segment.BaseProgressIndicator;
@@ -49,7 +50,6 @@ import io.druid.segment.QueryableIndex;
 import io.druid.segment.column.ColumnCapabilitiesImpl;
 import io.druid.segment.incremental.IncrementalIndex;
 import io.druid.segment.incremental.IncrementalIndexSchema;
-import io.druid.segment.incremental.OnheapIncrementalIndex;
 import io.druid.timeline.DataSegment;
 import io.druid.timeline.partition.NumberedShardSpec;
 import io.druid.timeline.partition.ShardSpec;
@@ -159,7 +159,7 @@ public class IndexGeneratorJob implements Jobby
     try {
       Job job = Job.getInstance(
           new Configuration(),
-          String.format("%s-index-generator-%s", config.getDataSource(), config.getIntervals())
+          StringUtils.format("%s-index-generator-%s", config.getDataSource(), config.getIntervals())
       );
 
       job.getConfiguration().set("io.sort.record.percent", "0.23");
@@ -237,11 +237,11 @@ public class IndexGeneratorJob implements Jobby
         .withRollup(config.getSchema().getDataSchema().getGranularitySpec().isRollup())
         .build();
 
-    OnheapIncrementalIndex newIndex = new OnheapIncrementalIndex(
-        indexSchema,
-        !tuningConfig.isIgnoreInvalidRows(),
-        tuningConfig.getRowFlushBoundary()
-    );
+    IncrementalIndex newIndex = new IncrementalIndex.Builder()
+        .setIndexSchema(indexSchema)
+        .setReportParseExceptions(!tuningConfig.isIgnoreInvalidRows())
+        .setMaxRowCount(tuningConfig.getRowFlushBoundary())
+        .buildOnheap();
 
     if (oldDimOrder != null && !indexSchema.getDimensionsSpec().hasCustomDimensions()) {
       newIndex.loadDimensionIterable(oldDimOrder, oldCapabilities);
@@ -436,6 +436,12 @@ public class IndexGeneratorJob implements Jobby
         }
 
         @Override
+        public double getDoubleMetric(String metric)
+        {
+          return row.getDoubleMetric(metric);
+        }
+
+        @Override
         public int compareTo(Row o)
         {
           return row.compareTo(o);
@@ -505,15 +511,9 @@ public class IndexGeneratorJob implements Jobby
         final ProgressIndicator progressIndicator
     ) throws IOException
     {
-      if (config.isBuildV9Directly()) {
-        return HadoopDruidIndexerConfig.INDEX_MERGER_V9.persist(
-            index, interval, file, config.getIndexSpec(), progressIndicator
-        );
-      } else {
-        return HadoopDruidIndexerConfig.INDEX_MERGER.persist(
-            index, interval, file, config.getIndexSpec(), progressIndicator
-        );
-      }
+      return HadoopDruidIndexerConfig.INDEX_MERGER_V9.persist(
+          index, interval, file, config.getIndexSpec(), progressIndicator
+      );
     }
 
     protected File mergeQueryableIndex(
@@ -524,15 +524,9 @@ public class IndexGeneratorJob implements Jobby
     ) throws IOException
     {
       boolean rollup = config.getSchema().getDataSchema().getGranularitySpec().isRollup();
-      if (config.isBuildV9Directly()) {
-        return HadoopDruidIndexerConfig.INDEX_MERGER_V9.mergeQueryableIndex(
-            indexes, rollup, aggs, file, config.getIndexSpec(), progressIndicator
-        );
-      } else {
-        return HadoopDruidIndexerConfig.INDEX_MERGER.mergeQueryableIndex(
-            indexes, rollup, aggs, file, config.getIndexSpec(), progressIndicator
-        );
-      }
+      return HadoopDruidIndexerConfig.INDEX_MERGER_V9.mergeQueryableIndex(
+          indexes, rollup, aggs, file, config.getIndexSpec(), progressIndicator
+      );
     }
 
     @Override
@@ -631,14 +625,14 @@ public class IndexGeneratorJob implements Jobby
             );
             runningTotalLineCount = lineCount;
 
-            final File file = new File(baseFlushFile, String.format("index%,05d", indexCount));
+            final File file = new File(baseFlushFile, StringUtils.format("index%,05d", indexCount));
             toMerge.add(file);
 
             context.progress();
             final IncrementalIndex persistIndex = index;
             persistFutures.add(
                 persistExecutor.submit(
-                    new ThreadRenamingRunnable(String.format("%s-persist", file.getName()))
+                    new ThreadRenamingRunnable(StringUtils.format("%s-persist", file.getName()))
                     {
                       @Override
                       public void doRun()
