@@ -29,6 +29,11 @@ public class JDBCDataSourceMetadataTest
   private static final JDBCDataSourceMetadata JM2 = JM("foo", 2);
   private static final JDBCDataSourceMetadata JM3 = JM("foo", 3);
 
+  private static JDBCDataSourceMetadata JM(String datasource, int offsets)
+  {
+    return new JDBCDataSourceMetadata(datasource, offsets);
+  }
+
   @Test
   public void testMatches()
   {
@@ -118,10 +123,5 @@ public class JDBCDataSourceMetadataTest
         JM("foo", 1),
         JM2.minus(JM2)
     );
-  }
-
-  private static JDBCDataSourceMetadata JM(String datasource, int offsets)
-  {
-    return new JDBCDataSourceMetadata(datasource, offsets);
   }
 }

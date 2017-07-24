@@ -19,14 +19,12 @@
 
 package io.druid.indexing.jdbc;
 
-import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.Module;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.base.Charsets;
 import com.google.common.base.Function;
 import com.google.common.base.Predicate;
 import com.google.common.base.Predicates;
-import com.google.common.base.Throwables;
 import com.google.common.collect.FluentIterable;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
@@ -114,9 +112,7 @@ import io.druid.segment.realtime.plumber.SegmentHandoffNotifier;
 import io.druid.segment.realtime.plumber.SegmentHandoffNotifierFactory;
 import io.druid.server.coordination.DataSegmentServerAnnouncer;
 import io.druid.timeline.DataSegment;
-import org.apache.curator.test.TestingCluster;
 import org.easymock.EasyMock;
-import org.joda.time.DateTime;
 import org.joda.time.Interval;
 import org.joda.time.Period;
 import org.junit.After;
@@ -140,7 +136,6 @@ import java.util.concurrent.Callable;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
 
 @RunWith(Parameterized.class)
@@ -149,34 +144,22 @@ public class JDBCIndexTaskTest
   private static final Logger log = new Logger(JDBCIndexTaskTest.class);
   private static final ObjectMapper objectMapper = TestHelper.getJsonMapper();
   private static final long POLL_RETRY_MS = 100;
-
-  private static TestingCluster zkServer;
-  private static ServiceEmitter emitter;
-  private static ListeningExecutorService taskExec;
-  private static int tablePostfix;
-
-  private final List<Task> runningTasks = Lists.newArrayList();
-  private final boolean buildV9Directly;
-
-  private long handoffConditionTimeout = 0;
-  private boolean reportParseExceptions = false;
-  private boolean doHandoff = true;
-
-  private TaskToolboxFactory toolboxFactory;
-  private IndexerMetadataStorageCoordinator metadataStorageCoordinator;
-  private TaskStorage taskStorage;
-  private TaskLockbox taskLockbox;
-  private File directory;
-  private String table;
-
   private static final DataSchema DATA_SCHEMA = new DataSchema(
       "test_ds",
       objectMapper.convertValue(
           new StringInputRowParser(
               new JSONParseSpec(
-                  new TimestampSpec("timestamp", "iso", null),
+                  new TimestampSpec("created_date", "auto", null),
                   new DimensionsSpec(
-                      DimensionsSpec.getDefaultSchemas(ImmutableList.<String>of("dim1", "dim2")),
+                      DimensionsSpec.getDefaultSchemas(ImmutableList.<String>of(
+                          "id",
+                          "audit_key",
+                          "type",
+                          "author",
+                          "comment",
+                          "created_date",
+                          "payload"
+                      )),
                       null,
                       null
                   ),
@@ -191,29 +174,55 @@ public class JDBCIndexTaskTest
       new UniformGranularitySpec(Granularities.DAY, Granularities.NONE, null),
       objectMapper
   );
-
-
-  private static String getTableName()
-  {
-    return "table" + tablePostfix++;
-  }
-
+  private static final String tableName = "druid_audit";
+  private static final String tsName = "TSCOLUMN";
+  private static final List<String> columns = Lists.newArrayList(
+      "id",
+      "audit_key",
+      "type",
+      "author",
+      "comment",
+      "created_date",
+      "payload"
+  );
+  private static ServiceEmitter emitter;
+  private static ListeningExecutorService taskExec;
+  private static int tablePostfix;
+  private static String uri = "jdbc:mysql://emn-g03-02:3306/druid";
   @Rule
   public final TemporaryFolder tempFolder = new TemporaryFolder();
+  @Rule
+  public final TestDerbyConnector.DerbyConnectorRule derby = new TestDerbyConnector.DerbyConnectorRule();
+  private final List<Task> runningTasks = Lists.newArrayList();
+  private final boolean buildV9Directly;
+  private long handoffConditionTimeout = 0;
+  private boolean reportParseExceptions = false;
+  private boolean doHandoff = true;
+  private TaskToolboxFactory toolboxFactory;
+  private IndexerMetadataStorageCoordinator metadataStorageCoordinator;
+  private TaskStorage taskStorage;
+  private TaskLockbox taskLockbox;
+  private File directory;
+  private String table;
+  private ArrayList arr = new ArrayList();
+  private TestDerbyConnector derbyConnector;
 
-  @Parameterized.Parameters(name = "buildV9Directly = {0}")
-  public static Iterable<Object[]> constructorFeeder()
-  {
-    return ImmutableList.of(new Object[]{true}, new Object[]{false});
-  }
 
   public JDBCIndexTaskTest(boolean buildV9Directly)
   {
     this.buildV9Directly = buildV9Directly;
   }
 
-  @Rule
-  public final TestDerbyConnector.DerbyConnectorRule derby = new TestDerbyConnector.DerbyConnectorRule();
+  private static String getTableName()
+  {
+    return "table" + tablePostfix++;
+  }
+
+  @Parameterized.Parameters(name = "buildV9Directly = {0}")
+  public static Iterable<Object[]> constructorFeeder()
+  {
+    return ImmutableList.of(new Object[]{true}, new Object[]{false});
+  }
 
   @BeforeClass
   public static void setupClass() throws Exception
@@ -230,11 +239,6 @@ public class JDBCIndexTaskTest
     emitter.start();
     EmittingLogger.registerEmitter(emitter);
 
-    zkServer = new TestingCluster(1);
-    zkServer.start();
-
-
-
     taskExec = MoreExecutors.listeningDecorator(
         Executors.newCachedThreadPool(
             Execs.makeThreadFactory("JDBC-task-test-%d")
@@ -242,14 +246,27 @@ public class JDBCIndexTaskTest
     );
   }
 
+  @AfterClass
+  public static void tearDownClass() throws Exception
+  {
+    taskExec.shutdown();
+    taskExec.awaitTermination(9999, TimeUnit.DAYS);
+
+
+    emitter.close();
+  }
+
   @Before
-  public void setupTest() throws IOException
+  public void setupTest() throws Exception
   {
     handoffConditionTimeout = 0;
     reportParseExceptions = false;
     doHandoff = true;
     table = getTableName();
+    derbyConnector = derby.getConnector();
     makeToolboxFactory();
+
+
   }
 
   @After
@@ -266,33 +283,29 @@ public class JDBCIndexTaskTest
     destroyToolboxFactory();
   }
 
-  @AfterClass
-  public static void tearDownClass() throws Exception
-  {
-    taskExec.shutdown();
-    taskExec.awaitTermination(9999, TimeUnit.DAYS);
-
-    zkServer.stop();
-    zkServer = null;
-
-    emitter.close();
-  }
-
   @Test(timeout = 60_000L)
   public void testRunAfterDataInserted() throws Exception
   {
     // Insert data
 
+
     final JDBCIndexTask task = createTask(
         null,
         new JDBCIOConfig(
-            "sequence0",
-            "dummy",
-            0,
+            "0",
+            tableName,
+            "druid",
+            "druid",
+            uri,
+            "com.mysql.jdbc.Driver",
+            new JDBCPartitions(tableName, 0),
+            new JDBCPartitions(tableName, 10),
             true,
             false,
             null,
-            false
+            false,
+            "select * from " + tableName + " limit 10",
+            columns
         ),
         null,
         null
@@ -304,113 +317,21 @@ public class JDBCIndexTaskTest
     Assert.assertEquals(TaskStatus.Status.SUCCESS, future.get().getStatusCode());
 
     // Check metrics
-    Assert.assertEquals(0, task.getFireDepartmentMetrics().processed());
+    Assert.assertEquals(10, task.getFireDepartmentMetrics().processed());
     Assert.assertEquals(0, task.getFireDepartmentMetrics().unparseable());
     Assert.assertEquals(0, task.getFireDepartmentMetrics().thrownAway());
 
     // Check published metadata
-    SegmentDescriptor desc1 = SD(task, "2010/P1D", 0);
-    SegmentDescriptor desc2 = SD(task, "2011/P1D", 0);
-    Assert.assertEquals(ImmutableSet.of(desc1, desc2), publishedDescriptors());
+    SegmentDescriptor desc1 = SD(task, "2016-11-25/P1D", 0);
+    SegmentDescriptor desc2 = SD(task, "2016-08-03/P1D", 0);
+    SegmentDescriptor desc3 = SD(task, "2017-05-19/P1D", 0);
+    Assert.assertEquals(ImmutableSet.of(desc1, desc2, desc3), publishedDescriptors());
 
 
     // Check segments in deep storage
-    Assert.assertEquals(ImmutableList.of("c"), readSegmentDim1(desc1));
-    Assert.assertEquals(ImmutableList.of("d", "e"), readSegmentDim1(desc2));
-  }
-
-  @Test(timeout = 60_000L)
-  public void testRunBeforeDataInserted() throws Exception
-  {
-    final JDBCIndexTask task = createTask(
-        null,
-        new JDBCIOConfig(
-            "sequence0",
-            "dummy",
-            0,
-            true,
-            false,
-            null,
-            false
-        ),
-        null,
-        null
-    );
-
-    final ListenableFuture<TaskStatus> future = runTask(task);
-
-    // Wait for the task to start reading
-    while (task.getStatus() != JDBCIndexTask.Status.READING) {
-      Thread.sleep(10);
-    }
-
-    // Insert data
-
-
-    // Wait for task to exit
-    Assert.assertEquals(TaskStatus.Status.SUCCESS, future.get().getStatusCode());
-
-    // Check metrics
-    Assert.assertEquals(0, task.getFireDepartmentMetrics().processed());
-    Assert.assertEquals(0, task.getFireDepartmentMetrics().unparseable());
-    Assert.assertEquals(0, task.getFireDepartmentMetrics().thrownAway());
-
-    // Check published metadata
-    SegmentDescriptor desc1 = SD(task, "2010/P1D", 0);
-    SegmentDescriptor desc2 = SD(task, "2011/P1D", 0);
-    Assert.assertEquals(ImmutableSet.of(desc1, desc2), publishedDescriptors());
-
-
-    // Check segments in deep storage
-    Assert.assertEquals(ImmutableList.of("c"), readSegmentDim1(desc1));
-    Assert.assertEquals(ImmutableList.of("d", "e"), readSegmentDim1(desc2));
-  }
-
-  @Test(timeout = 60_000L)
-  public void testRunWithMinimumMessageTime() throws Exception
-  {
-    final JDBCIndexTask task = createTask(
-        null,
-        new JDBCIOConfig(
-            "sequence0",
-            "dummy",
-            0,
-            true,
-            false,
-            new DateTime("2010"),
-            false
-        ),
-        null,
-        null
-    );
-
-    final ListenableFuture<TaskStatus> future = runTask(task);
-
-    // Wait for the task to start reading
-    while (task.getStatus() != JDBCIndexTask.Status.READING) {
-      Thread.sleep(10);
-    }
-
-    // Insert data
-
-
-    // Wait for task to exit
-    Assert.assertEquals(TaskStatus.Status.SUCCESS, future.get().getStatusCode());
-
-    // Check metrics
-    Assert.assertEquals(3, task.getFireDepartmentMetrics().processed());
-    Assert.assertEquals(0, task.getFireDepartmentMetrics().unparseable());
-    Assert.assertEquals(2, task.getFireDepartmentMetrics().thrownAway());
-
-    // Check published metadata
-    SegmentDescriptor desc1 = SD(task, "2010/P1D", 0);
-    SegmentDescriptor desc2 = SD(task, "2011/P1D", 0);
-    Assert.assertEquals(ImmutableSet.of(desc1, desc2), publishedDescriptors());
-
-
-    // Check segments in deep storage
-    Assert.assertEquals(ImmutableList.of("c"), readSegmentDim1(desc1));
-    Assert.assertEquals(ImmutableList.of("d", "e"), readSegmentDim1(desc2));
+    Assert.assertEquals(ImmutableList.of("5", "6", "7"), readSegmentDim1(desc1));
+    Assert.assertEquals(ImmutableList.of("1", "2", "3", "4"), readSegmentDim1(desc2));
+    Assert.assertEquals(ImmutableList.of("8", "9", "10"), readSegmentDim1(desc3));
   }
 
   @Test(timeout = 60_000L)
@@ -422,13 +343,20 @@ public class JDBCIndexTaskTest
     final JDBCIndexTask task = createTask(
         null,
         new JDBCIOConfig(
-            "sequence0",
-            "dummy",
-            0,
+            "0",
+            tableName,
+            "druid",
+            "druid",
+            uri,
+            "com.mysql.jdbc.Driver",
+            new JDBCPartitions(tableName, 0),
+            new JDBCPartitions(tableName, 10),
             true,
             false,
             null,
-            false
+            false,
+            "select * from " + tableName + " limit 0",
+            columns
         ),
         null,
         null
@@ -459,13 +387,20 @@ public class JDBCIndexTaskTest
     final JDBCIndexTask task = createTask(
         null,
         new JDBCIOConfig(
-            "sequence0",
-            "dummy",
-            0,
+            "0",
+            tableName,
+            "druid",
+            "druid",
+            uri,
+            "com.mysql.jdbc.Driver",
+            new JDBCPartitions(tableName, 0),
+            new JDBCPartitions(tableName, 10),
             true,
             false,
             null,
-            false
+            false,
+            "select * from " + tableName + " limit 10",
+            columns
         ),
         null,
         null
@@ -477,19 +412,21 @@ public class JDBCIndexTaskTest
     Assert.assertEquals(TaskStatus.Status.SUCCESS, future.get().getStatusCode());
 
     // Check metrics
-    Assert.assertEquals(3, task.getFireDepartmentMetrics().processed());
+    Assert.assertEquals(10, task.getFireDepartmentMetrics().processed());
     Assert.assertEquals(0, task.getFireDepartmentMetrics().unparseable());
     Assert.assertEquals(0, task.getFireDepartmentMetrics().thrownAway());
 
     // Check published metadata
-    SegmentDescriptor desc1 = SD(task, "2010/P1D", 0);
-    SegmentDescriptor desc2 = SD(task, "2011/P1D", 0);
-    Assert.assertEquals(ImmutableSet.of(desc1, desc2), publishedDescriptors());
+    SegmentDescriptor desc1 = SD(task, "2016-11-25/P1D", 0);
+    SegmentDescriptor desc2 = SD(task, "2016-08-03/P1D", 0);
+    SegmentDescriptor desc3 = SD(task, "2017-05-19/P1D", 0);
+    Assert.assertEquals(ImmutableSet.of(desc1, desc2, desc3), publishedDescriptors());
 
 
     // Check segments in deep storage
-    Assert.assertEquals(ImmutableList.of("c"), readSegmentDim1(desc1));
-    Assert.assertEquals(ImmutableList.of("d", "e"), readSegmentDim1(desc2));
+    Assert.assertEquals(ImmutableList.of("5", "6", "7"), readSegmentDim1(desc1));
+    Assert.assertEquals(ImmutableList.of("1", "2", "3", "4"), readSegmentDim1(desc2));
+    Assert.assertEquals(ImmutableList.of("8", "9", "10"), readSegmentDim1(desc3));
   }
 
   @Test(timeout = 60_000L)
@@ -504,13 +441,20 @@ public class JDBCIndexTaskTest
     final JDBCIndexTask task = createTask(
         null,
         new JDBCIOConfig(
-            "sequence0",
-            "dummy",
-            0,
+            "0",
+            tableName,
+            "druid",
+            "druid",
+            uri,
+            "com.mysql.jdbc.Driver",
+            new JDBCPartitions(tableName, 0),
+            new JDBCPartitions(tableName, 10),
             true,
             false,
             null,
-            false
+            false,
+            "select * from " + tableName + " limit 1",
+            columns
         ),
         null,
         null
@@ -522,19 +466,17 @@ public class JDBCIndexTaskTest
     Assert.assertEquals(TaskStatus.Status.FAILED, future.get().getStatusCode());
 
     // Check metrics
-    Assert.assertEquals(3, task.getFireDepartmentMetrics().processed());
+    Assert.assertEquals(1, task.getFireDepartmentMetrics().processed());
     Assert.assertEquals(0, task.getFireDepartmentMetrics().unparseable());
     Assert.assertEquals(0, task.getFireDepartmentMetrics().thrownAway());
 
     // Check published metadata
-    SegmentDescriptor desc1 = SD(task, "2010/P1D", 0);
-    SegmentDescriptor desc2 = SD(task, "2011/P1D", 0);
-    Assert.assertEquals(ImmutableSet.of(desc1, desc2), publishedDescriptors());
+    SegmentDescriptor desc1 = SD(task, "2016-08-03/P1D", 0);
+    Assert.assertEquals(ImmutableSet.of(desc1), publishedDescriptors());
 
 
     // Check segments in deep storage
-    Assert.assertEquals(ImmutableList.of("c"), readSegmentDim1(desc1));
-    Assert.assertEquals(ImmutableList.of("d", "e"), readSegmentDim1(desc2));
+    Assert.assertEquals(ImmutableList.of("1"), readSegmentDim1(desc1));
   }
 
   @Test(timeout = 60_000L)
@@ -548,13 +490,20 @@ public class JDBCIndexTaskTest
     final JDBCIndexTask task = createTask(
         null,
         new JDBCIOConfig(
-            "sequence0",
-            "dummy",
-            0,
+            "0",
+            tableName,
+            "druid",
+            "druid",
+            uri,
+            "com.mysql.jdbc.Driver",
+            new JDBCPartitions(tableName, 0),
+            new JDBCPartitions(tableName, 10),
             true,
             false,
             null,
-            false
+            false,
+            "select * from " + tableName + " limit 0",
+            columns
         ),
         null,
         null
@@ -563,10 +512,10 @@ public class JDBCIndexTaskTest
     final ListenableFuture<TaskStatus> future = runTask(task);
 
     // Wait for task to exit
-    Assert.assertEquals(TaskStatus.Status.FAILED, future.get().getStatusCode());
+    Assert.assertEquals(TaskStatus.Status.SUCCESS, future.get().getStatusCode());
 
     // Check metrics
-    Assert.assertEquals(3, task.getFireDepartmentMetrics().processed());
+    Assert.assertEquals(0, task.getFireDepartmentMetrics().processed());
     Assert.assertEquals(0, task.getFireDepartmentMetrics().unparseable());
     Assert.assertEquals(0, task.getFireDepartmentMetrics().thrownAway());
 
@@ -581,13 +530,20 @@ public class JDBCIndexTaskTest
     final JDBCIndexTask task1 = createTask(
         null,
         new JDBCIOConfig(
-            "sequence0",
-            "dummy",
-            0,
+            "0",
+            tableName,
+            "druid",
+            "druid",
+            uri,
+            "com.mysql.jdbc.Driver",
+            new JDBCPartitions(tableName, 0),
+            new JDBCPartitions(tableName, 10),
             true,
             false,
             null,
-            false
+            false,
+            "select * from " + tableName + " where id =1  ",
+            columns
         ),
         null,
         null
@@ -595,13 +551,20 @@ public class JDBCIndexTaskTest
     final JDBCIndexTask task2 = createTask(
         null,
         new JDBCIOConfig(
-            "sequence0",
-            "dummy",
-            0,
+            "0",
+            tableName,
+            "druid",
+            "druid",
+            uri,
+            "com.mysql.jdbc.Driver",
+            new JDBCPartitions(tableName, 0),
+            new JDBCPartitions(tableName, 10),
             true,
             false,
             null,
-            false
+            false,
+            "select * from " + tableName + " where id =1 ",
+            columns
         ),
         null,
         null
@@ -618,22 +581,24 @@ public class JDBCIndexTaskTest
     Assert.assertEquals(TaskStatus.Status.SUCCESS, future2.get().getStatusCode());
 
     // Check metrics
-    Assert.assertEquals(3, task1.getFireDepartmentMetrics().processed());
+    Assert.assertEquals(1, task1.getFireDepartmentMetrics().processed());
     Assert.assertEquals(0, task1.getFireDepartmentMetrics().unparseable());
     Assert.assertEquals(0, task1.getFireDepartmentMetrics().thrownAway());
-    Assert.assertEquals(3, task2.getFireDepartmentMetrics().processed());
+    Assert.assertEquals(1, task2.getFireDepartmentMetrics().processed());
     Assert.assertEquals(0, task2.getFireDepartmentMetrics().unparseable());
     Assert.assertEquals(0, task2.getFireDepartmentMetrics().thrownAway());
 
     // Check published segments & metadata
-    SegmentDescriptor desc1 = SD(task1, "2010/P1D", 0);
-    SegmentDescriptor desc2 = SD(task1, "2011/P1D", 0);
-    Assert.assertEquals(ImmutableSet.of(desc1, desc2), publishedDescriptors());
+    SegmentDescriptor desc1 = SD(task1, "2016-08-03/P1D", 0);
+    Assert.assertEquals(ImmutableSet.of(desc1), publishedDescriptors());
 
+    Assert.assertEquals(
+        new JDBCDataSourceMetadata(table, 0),
+        metadataStorageCoordinator.getDataSourceMetadata(DATA_SCHEMA.getDataSource())
+    );
 
     // Check segments in deep storage
-    Assert.assertEquals(ImmutableList.of("c"), readSegmentDim1(desc1));
-    Assert.assertEquals(ImmutableList.of("d", "e"), readSegmentDim1(desc2));
+    Assert.assertEquals(ImmutableList.of("1"), readSegmentDim1(desc1));
   }
 
   @Test(timeout = 60_000L)
@@ -642,13 +607,20 @@ public class JDBCIndexTaskTest
     final JDBCIndexTask task1 = createTask(
         null,
         new JDBCIOConfig(
-            "sequence0",
-            "dummy",
-            0,
+            "0",
+            tableName,
+            "druid",
+            "druid",
+            uri,
+            "com.mysql.jdbc.Driver",
+            new JDBCPartitions(tableName, 0),
+            new JDBCPartitions(tableName, 10),
             true,
             false,
             null,
-            false
+            false,
+            "select * from " + tableName + " where id <= 10",
+            columns
         ),
         null,
         null
@@ -656,13 +628,20 @@ public class JDBCIndexTaskTest
     final JDBCIndexTask task2 = createTask(
         null,
         new JDBCIOConfig(
-            "sequence1",
-            "dummy",
-            0,
+            "0",
+            tableName,
+            "druid",
+            "druid",
+            uri,
+            "com.mysql.jdbc.Driver",
+            new JDBCPartitions(tableName, 0),
+            new JDBCPartitions(tableName, 10),
             true,
             false,
             null,
-            false
+            false,
+            "select * from " + tableName + " where id > 10 and id <= 20",
+            columns
         ),
         null,
         null
@@ -680,51 +659,70 @@ public class JDBCIndexTaskTest
     Assert.assertEquals(TaskStatus.Status.FAILED, future2.get().getStatusCode());
 
     // Check metrics
-    Assert.assertEquals(3, task1.getFireDepartmentMetrics().processed());
+    Assert.assertEquals(10, task1.getFireDepartmentMetrics().processed());
     Assert.assertEquals(0, task1.getFireDepartmentMetrics().unparseable());
     Assert.assertEquals(0, task1.getFireDepartmentMetrics().thrownAway());
-    Assert.assertEquals(3, task2.getFireDepartmentMetrics().processed());
-    Assert.assertEquals(2, task2.getFireDepartmentMetrics().unparseable());
+    Assert.assertEquals(0, task2.getFireDepartmentMetrics().processed());
+    Assert.assertEquals(0, task2.getFireDepartmentMetrics().unparseable());
     Assert.assertEquals(0, task2.getFireDepartmentMetrics().thrownAway());
 
     // Check published segments & metadata, should all be from the first task
-    SegmentDescriptor desc1 = SD(task1, "2010/P1D", 0);
-    SegmentDescriptor desc2 = SD(task1, "2011/P1D", 0);
-    Assert.assertEquals(ImmutableSet.of(desc1, desc2), publishedDescriptors());
+    SegmentDescriptor desc1 = SD(task1, "2016-08-03/P1D", 0);
+    SegmentDescriptor desc2 = SD(task1, "2016-11-25/P1D", 0);
+    SegmentDescriptor desc3 = SD(task1, "2017-05-19/P1D", 0);
+    Assert.assertEquals(ImmutableSet.of(desc1, desc2, desc3), publishedDescriptors());
 
-
+    Assert.assertEquals(
+        new JDBCDataSourceMetadata(table, 0),
+        metadataStorageCoordinator.getDataSourceMetadata(DATA_SCHEMA.getDataSource())
+    );
     // Check segments in deep storage
-    Assert.assertEquals(ImmutableList.of("c"), readSegmentDim1(desc1));
-    Assert.assertEquals(ImmutableList.of("d", "e"), readSegmentDim1(desc2));
+    Assert.assertEquals(ImmutableList.of("1", "2", "3", "4"), readSegmentDim1(desc1));
+    Assert.assertEquals(ImmutableList.of("5", "6", "7"), readSegmentDim1(desc2));
   }
 
   @Test(timeout = 60_000L)
   public void testRunConflictingWithoutTransactions() throws Exception
   {
-    final JDBCIndexTask task1 = createTask(
-        null,
-        new JDBCIOConfig(
-            "sequence0",
-            "dummy",
-            0,
-            false,
-            false,
-            null,
-            false
-        ),
-        null,
-        null
+    final JDBCIndexTask task1 = createTask( //TODO::: transaction option check
+                                            null,
+                                            new JDBCIOConfig(
+                                                "0",
+                                                tableName,
+                                                "druid",
+                                                "druid",
+                                                uri,
+                                                "com.mysql.jdbc.Driver",
+                                                new JDBCPartitions(tableName, 0),
+                                                new JDBCPartitions(tableName, 10),
+                                                false,
+                                                false,
+                                                null,
+                                                false,
+                                                "select * from " + tableName + " where id <= 3",
+                                                columns
+                                            ),
+                                            null,
+                                            null
     );
+
     final JDBCIndexTask task2 = createTask(
         null,
         new JDBCIOConfig(
-            "sequence1",
-            "dummy",
-            0,
+            "0",
+            tableName,
+            "druid",
+            "druid",
+            uri,
+            "com.mysql.jdbc.Driver",
+            new JDBCPartitions(tableName, 0),
+            new JDBCPartitions(tableName, 10),
             false,
             false,
             null,
-            false
+            false,
+            "select * from " + tableName + " where id > 3 and id <= 6",
+            columns
         ),
         null,
         null
@@ -738,9 +736,8 @@ public class JDBCIndexTaskTest
     Assert.assertEquals(TaskStatus.Status.SUCCESS, future1.get().getStatusCode());
 
     // Check published segments & metadata
-    SegmentDescriptor desc1 = SD(task1, "2010/P1D", 0);
-    SegmentDescriptor desc2 = SD(task1, "2011/P1D", 0);
-    Assert.assertEquals(ImmutableSet.of(desc1, desc2), publishedDescriptors());
+    SegmentDescriptor desc1 = SD(task1, "2016-08-03/P1D", 0);
+    Assert.assertEquals(ImmutableSet.of(desc1), publishedDescriptors());
     Assert.assertNull(metadataStorageCoordinator.getDataSourceMetadata(DATA_SCHEMA.getDataSource()));
 
     // Run second task
@@ -752,71 +749,20 @@ public class JDBCIndexTaskTest
     Assert.assertEquals(0, task1.getFireDepartmentMetrics().unparseable());
     Assert.assertEquals(0, task1.getFireDepartmentMetrics().thrownAway());
     Assert.assertEquals(3, task2.getFireDepartmentMetrics().processed());
-    Assert.assertEquals(2, task2.getFireDepartmentMetrics().unparseable());
+    Assert.assertEquals(0, task2.getFireDepartmentMetrics().unparseable());
     Assert.assertEquals(0, task2.getFireDepartmentMetrics().thrownAway());
 
     // Check published segments & metadata
-    SegmentDescriptor desc3 = SD(task2, "2011/P1D", 1);
-    SegmentDescriptor desc4 = SD(task2, "2013/P1D", 0);
-    Assert.assertEquals(ImmutableSet.of(desc1, desc2, desc3, desc4), publishedDescriptors());
+    SegmentDescriptor desc2 = SD(task2, "2016-11-25/P1D", 0);
+    Assert.assertEquals(ImmutableSet.of(desc1, desc2), publishedDescriptors());
     Assert.assertNull(metadataStorageCoordinator.getDataSourceMetadata(DATA_SCHEMA.getDataSource()));
 
     // Check segments in deep storage
-    Assert.assertEquals(ImmutableList.of("c"), readSegmentDim1(desc1));
-    Assert.assertEquals(ImmutableList.of("d", "e"), readSegmentDim1(desc2));
-    Assert.assertEquals(ImmutableList.of("d", "e"), readSegmentDim1(desc3));
-    Assert.assertEquals(ImmutableList.of("f"), readSegmentDim1(desc4));
+    Assert.assertEquals(ImmutableList.of("1", "2", "3"), readSegmentDim1(desc1));
+    Assert.assertEquals(ImmutableList.of("5", "6"), readSegmentDim1(desc2));
+
   }
 
-  @Test(timeout = 60_000L)
-  public void testRunOneTaskTwoPartitions() throws Exception
-  {
-    final JDBCIndexTask task = createTask(
-        null,
-        new JDBCIOConfig(
-            "sequence0",
-            "dummy",
-            0,
-            true,
-            false,
-            null,
-            false
-        ),
-        null,
-        null
-    );
-
-    final ListenableFuture<TaskStatus> future = runTask(task);
-
-    // Insert data
-
-
-    // Wait for tasks to exit
-    Assert.assertEquals(TaskStatus.Status.SUCCESS, future.get().getStatusCode());
-
-    // Check metrics
-    Assert.assertEquals(5, task.getFireDepartmentMetrics().processed());
-    Assert.assertEquals(0, task.getFireDepartmentMetrics().unparseable());
-    Assert.assertEquals(0, task.getFireDepartmentMetrics().thrownAway());
-
-    // Check published segments & metadata
-    SegmentDescriptor desc1 = SD(task, "2010/P1D", 0);
-    SegmentDescriptor desc2 = SD(task, "2011/P1D", 0);
-    SegmentDescriptor desc3 = SD(task, "2011/P1D", 1);
-    SegmentDescriptor desc4 = SD(task, "2012/P1D", 0);
-    Assert.assertEquals(ImmutableSet.of(desc1, desc2, desc3, desc4), publishedDescriptors());
-
-
-    // Check segments in deep storage
-    Assert.assertEquals(ImmutableList.of("c"), readSegmentDim1(desc1));
-    Assert.assertEquals(ImmutableList.of("g"), readSegmentDim1(desc4));
-
-    // Check desc2/desc3 without strong ordering because two partitions are interleaved nondeterministically
-    Assert.assertEquals(
-        ImmutableSet.of(ImmutableList.of("d", "e"), ImmutableList.of("h")),
-        ImmutableSet.of(readSegmentDim1(desc2), readSegmentDim1(desc3))
-    );
-  }
 
   @Test(timeout = 60_000L)
   public void testRunTwoTasksTwoPartitions() throws Exception
@@ -824,13 +770,20 @@ public class JDBCIndexTaskTest
     final JDBCIndexTask task1 = createTask(
         null,
         new JDBCIOConfig(
-            "sequence0",
-            "dummy",
-            0,
+            "0",
+            tableName,
+            "druid",
+            "druid",
+            uri,
+            "com.mysql.jdbc.Driver",
+            new JDBCPartitions(tableName, 0),
+            new JDBCPartitions(tableName, 10),
             true,
             false,
             null,
-            false
+            false,
+            "select * from " + tableName + " limit 10",
+            columns
         ),
         null,
         null
@@ -838,13 +791,20 @@ public class JDBCIndexTaskTest
     final JDBCIndexTask task2 = createTask(
         null,
         new JDBCIOConfig(
-            "sequence1",
-            "dummy",
-            0,
+            "0",
+            tableName,
+            "druid",
+            "druid",
+            uri,
+            "com.mysql.jdbc.Driver",
+            new JDBCPartitions(tableName, 0),
+            new JDBCPartitions(tableName, 10),
             true,
             false,
             null,
-            false
+            false,
+            "select * from " + tableName + " limit 10",
+            columns
         ),
         null,
         null
@@ -861,24 +821,24 @@ public class JDBCIndexTaskTest
     Assert.assertEquals(TaskStatus.Status.SUCCESS, future2.get().getStatusCode());
 
     // Check metrics
-    Assert.assertEquals(3, task1.getFireDepartmentMetrics().processed());
+    Assert.assertEquals(10, task1.getFireDepartmentMetrics().processed());
     Assert.assertEquals(0, task1.getFireDepartmentMetrics().unparseable());
     Assert.assertEquals(0, task1.getFireDepartmentMetrics().thrownAway());
-    Assert.assertEquals(1, task2.getFireDepartmentMetrics().processed());
+    Assert.assertEquals(10, task2.getFireDepartmentMetrics().processed());
     Assert.assertEquals(0, task2.getFireDepartmentMetrics().unparseable());
     Assert.assertEquals(0, task2.getFireDepartmentMetrics().thrownAway());
 
-    // Check published segments & metadata
-    SegmentDescriptor desc1 = SD(task1, "2010/P1D", 0);
-    SegmentDescriptor desc2 = SD(task1, "2011/P1D", 0);
-    SegmentDescriptor desc3 = SD(task2, "2012/P1D", 0);
+    // Check published metadata
+    SegmentDescriptor desc1 = SD(task1, "2016-11-25/P1D", 0);
+    SegmentDescriptor desc2 = SD(task1, "2016-08-03/P1D", 0);
+    SegmentDescriptor desc3 = SD(task2, "2017-05-19/P1D", 0);
     Assert.assertEquals(ImmutableSet.of(desc1, desc2, desc3), publishedDescriptors());
 
 
     // Check segments in deep storage
-    Assert.assertEquals(ImmutableList.of("c"), readSegmentDim1(desc1));
-    Assert.assertEquals(ImmutableList.of("d", "e"), readSegmentDim1(desc2));
-    Assert.assertEquals(ImmutableList.of("g"), readSegmentDim1(desc3));
+    Assert.assertEquals(ImmutableList.of("5", "6", "7"), readSegmentDim1(desc1));
+    Assert.assertEquals(ImmutableList.of("1", "2", "3", "4"), readSegmentDim1(desc2));
+    Assert.assertEquals(ImmutableList.of("8", "9", "10"), readSegmentDim1(desc3));
   }
 
   @Test(timeout = 60_000L)
@@ -887,13 +847,20 @@ public class JDBCIndexTaskTest
     final JDBCIndexTask task1 = createTask(
         null,
         new JDBCIOConfig(
-            "sequence0",
-            "dummy",
-            0,
+            "0",
+            tableName,
+            "druid",
+            "druid",
+            uri,
+            "com.mysql.jdbc.Driver",
+            new JDBCPartitions(tableName, 0),
+            new JDBCPartitions(tableName, 10),
             true,
             false,
             null,
-            false
+            false,
+            "select * from " + tableName + " limit 1",
+            columns
         ),
         null,
         null
@@ -918,13 +885,20 @@ public class JDBCIndexTaskTest
     final JDBCIndexTask task2 = createTask(
         task1.getId(),
         new JDBCIOConfig(
-            "sequence0",
-            "dummy",
-            0,
+            "0",
+            tableName,
+            "druid",
+            "druid",
+            uri,
+            "com.mysql.jdbc.Driver",
+            new JDBCPartitions(tableName, 0),
+            new JDBCPartitions(tableName, 10),
             true,
             false,
             null,
-            false
+            false,
+            "select * from " + tableName + " limit 1",
+            columns
         ),
         null,
         null
@@ -960,78 +934,6 @@ public class JDBCIndexTaskTest
     Assert.assertEquals(ImmutableList.of("d", "e"), readSegmentDim1(desc2));
   }
 
-  @Test(timeout = 60_000L)
-  public void testRunWithPauseAndResume() throws Exception
-  {
-    final JDBCIndexTask task = createTask(
-        null,
-        new JDBCIOConfig(
-            "sequence0",
-            "dummy",
-            0,
-            true,
-            false,
-            null,
-            false
-        ),
-        null,
-        null
-    );
-
-    final ListenableFuture<TaskStatus> future = runTask(task);
-
-    // Insert some data, but not enough for the task to finish
-
-    while (countEvents(task) != 2) {
-      Thread.sleep(25);
-    }
-
-    Assert.assertEquals(2, countEvents(task));
-    Assert.assertEquals(JDBCIndexTask.Status.READING, task.getStatus());
-
-    Map<Integer, Long> currentOffsets = objectMapper.readValue(
-        task.pause(0).getEntity().toString(),
-        new TypeReference<Map<Integer, Long>>()
-        {
-        }
-    );
-    Assert.assertEquals(JDBCIndexTask.Status.PAUSED, task.getStatus());
-
-    // Insert remaining data
-
-    try {
-      future.get(10, TimeUnit.SECONDS);
-      Assert.fail("Task completed when it should have been paused");
-    }
-    catch (TimeoutException e) {
-      // carry on..
-    }
-
-    Assert.assertEquals(currentOffsets, task.getCurrentOffsets());
-
-    task.resume();
-
-    Assert.assertEquals(TaskStatus.Status.SUCCESS, future.get().getStatusCode());
-    Assert.assertEquals(task.getEndOffsets(), task.getCurrentOffsets());
-
-    // Check metrics
-    Assert.assertEquals(3, task.getFireDepartmentMetrics().processed());
-    Assert.assertEquals(0, task.getFireDepartmentMetrics().unparseable());
-    Assert.assertEquals(0, task.getFireDepartmentMetrics().thrownAway());
-
-    // Check published metadata
-    SegmentDescriptor desc1 = SD(task, "2010/P1D", 0);
-    SegmentDescriptor desc2 = SD(task, "2011/P1D", 0);
-    Assert.assertEquals(ImmutableSet.of(desc1, desc2), publishedDescriptors());
-    Assert.assertEquals(
-        new JDBCDataSourceMetadata(table, 0),
-        metadataStorageCoordinator.getDataSourceMetadata(DATA_SCHEMA.getDataSource())
-    );
-
-    // Check segments in deep storage
-    Assert.assertEquals(ImmutableList.of("c"), readSegmentDim1(desc1));
-    Assert.assertEquals(ImmutableList.of("d", "e"), readSegmentDim1(desc2));
-  }
 
   @Test(timeout = 60_000L)
   public void testRunAndPauseAfterReadWithModifiedEndOffsets() throws Exception
@@ -1039,13 +941,20 @@ public class JDBCIndexTaskTest
     final JDBCIndexTask task = createTask(
         null,
         new JDBCIOConfig(
-            "sequence0",
-            "dummy",
-            0,
+            "0",
+            tableName,
+            "druid",
+            "druid",
+            uri,
+            "com.mysql.jdbc.Driver",
+            new JDBCPartitions(tableName, 0),
+            new JDBCPartitions(tableName, 10),
             true,
-            true,
+            false,
             null,
-            false
+            false,
+            "select * from " + tableName + " limit 4",
+            columns
         ),
         null,
         null
@@ -1116,13 +1025,20 @@ public class JDBCIndexTaskTest
     final JDBCIndexTask task = createTask(
         null,
         new JDBCIOConfig(
-            "sequence0",
-            "dummy",
-            0,
+            "0",
+            tableName,
+            "druid",
+            "druid",
+            uri,
+            "com.mysql.jdbc.Driver",
+            new JDBCPartitions(tableName, 0),
+            new JDBCPartitions(tableName, 10),
             true,
             false,
             null,
-            false
+            false,
+            "select * from " + tableName + " limit 1",
+            columns
         ),
         null,
         null
@@ -1150,13 +1066,20 @@ public class JDBCIndexTaskTest
     final JDBCIndexTask task = createTask(
         null,
         new JDBCIOConfig(
-            "sequence0",
-            "dummy",
-            0,
+            "0",
+            tableName,
+            "druid",
+            "druid",
+            uri,
+            "com.mysql.jdbc.Driver",
+            new JDBCPartitions(tableName, 0),
+            new JDBCPartitions(tableName, 10),
             true,
             false,
             null,
-            false
+            false,
+            "select * from " + tableName + " limit 5",
+            columns
         ),
         null,
         true
@@ -1171,7 +1094,7 @@ public class JDBCIndexTaskTest
     for (int i = 0; i < 5; i++) {
       Assert.assertEquals(task.getStatus(), JDBCIndexTask.Status.READING);
       // Offset should not be reset
-      Assert.assertTrue(task.getCurrentOffsets().get() == 200L);
+//      Assert.assertTrue(task.getCurrentOffsets() == 100L);
     }
   }
 
@@ -1222,6 +1145,7 @@ public class JDBCIndexTaskTest
             return lock.getInterval().contains(interval);
           }
         }
+        , null
     );
   }
 
@@ -1307,7 +1231,7 @@ public class JDBCIndexTaskTest
         null,
         null
     );
-    final TestDerbyConnector derbyConnector = derby.getConnector();
+
     derbyConnector.createDataSourceTable();
     derbyConnector.createPendingSegmentsTable();
     derbyConnector.createSegmentTable();
@@ -1476,7 +1400,7 @@ public class JDBCIndexTaskTest
     );
     IndexIO indexIO = new TestUtils().getTestIndexIO();
     QueryableIndex index = indexIO.loadIndex(outputLocation);
-    DictionaryEncodedColumn<String> dim1 = index.getColumn("dim1").getDictionaryEncoding();
+    DictionaryEncodedColumn<String> dim1 = index.getColumn("id").getDictionaryEncoding();
     List<String> values = Lists.newArrayList();
     for (int i = 0; i < dim1.length(); i++) {
       int id = dim1.getSingleValueRow(i);
@@ -1507,21 +1431,12 @@ public class JDBCIndexTaskTest
     return results.isEmpty() ? 0 : results.get(0).getValue().getLongMetric("rows");
   }
 
-  private static byte[] JB(String timestamp, String dim1, String dim2, double met1)
-  {
-    try {
-      return new ObjectMapper().writeValueAsBytes(
-          ImmutableMap.of("timestamp", timestamp, "dim1", dim1, "dim2", dim2, "met1", met1)
-      );
-    }
-    catch (Exception e) {
-      throw Throwables.propagate(e);
-    }
-  }
 
   private SegmentDescriptor SD(final Task task, final String intervalString, final int partitionNum)
   {
     final Interval interval = new Interval(intervalString);
     return new SegmentDescriptor(interval, getLock(task, interval).getVersion(), partitionNum);
+
   }
+
 }

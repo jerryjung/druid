@@ -60,29 +60,11 @@ import java.util.concurrent.Callable;
 
 public class JDBCIndexTaskClient
 {
-  public static class NoTaskLocationException extends RuntimeException
-  {
-    public NoTaskLocationException(String message)
-    {
-      super(message);
-    }
-  }
-
-  public static class TaskNotRunnableException extends RuntimeException
-  {
-    public TaskNotRunnableException(String message)
-    {
-      super(message);
-    }
-  }
-
   public static final int MAX_RETRY_WAIT_SECONDS = 10;
-
   private static final int MIN_RETRY_WAIT_SECONDS = 2;
   private static final EmittingLogger log = new EmittingLogger(JDBCIndexTaskClient.class);
   private static final String BASE_PATH = "/druid/worker/v1/chat";
   private static final int TASK_MISMATCH_RETRY_DELAY_SECONDS = 5;
-
   private final HttpClient httpClient;
   private final ObjectMapper jsonMapper;
   private final TaskInfoProvider taskInfoProvider;
@@ -90,7 +72,6 @@ public class JDBCIndexTaskClient
   private final RetryPolicyFactory retryPolicyFactory;
   private final ListeningExecutorService executorService;
   private final long numRetries;
-
   public JDBCIndexTaskClient(
       HttpClient httpClient,
       ObjectMapper jsonMapper,
@@ -160,12 +141,12 @@ public class JDBCIndexTaskClient
     }
   }
 
-  public Map<Integer, Long> pause(final String id)
+  public Long pause(final String id)
   {
     return pause(id, 0);
   }
 
-  public Map<Integer, Long> pause(final String id, final long timeout)
+  public Long pause(final String id, final long timeout)
   {
     log.debug("Pause task[%s] timeout[%d]", id, timeout);
 
@@ -180,7 +161,9 @@ public class JDBCIndexTaskClient
 
       if (response.getStatus().equals(HttpResponseStatus.OK)) {
         log.info("Task [%s] paused successfully", id);
-        return jsonMapper.readValue(response.getContent(), new TypeReference<Map<Integer, Long>>() {});
+        return jsonMapper.readValue(response.getContent(), new TypeReference<Map<Integer, Long>>()
+        {
+        });
       }
 
       final RetryPolicy retryPolicy = retryPolicyFactory.makeRetryPolicy();
@@ -206,7 +189,7 @@ public class JDBCIndexTaskClient
     }
     catch (NoTaskLocationException e) {
       log.error("Exception [%s] while pausing Task [%s]", e.getMessage(), id);
-      return ImmutableMap.of();
+      return 0L;
     }
     catch (IOException | InterruptedException e) {
       log.error("Exception [%s] while pausing Task [%s]", e.getMessage(), id);
@@ -248,16 +231,18 @@ public class JDBCIndexTaskClient
     }
   }
 
-  public Map<Integer, Long> getCurrentOffsets(final String id, final boolean retry)
+  public Long getCurrentOffsets(final String id, final boolean retry)
   {
     log.debug("GetCurrentOffsets task[%s] retry[%s]", id, retry);
 
     try {
       final FullResponseHolder response = submitRequest(id, HttpMethod.GET, "offsets/current", null, retry);
-      return jsonMapper.readValue(response.getContent(), new TypeReference<Map<Integer, Long>>() {});
+      return jsonMapper.readValue(response.getContent(), new TypeReference<Map<Integer, Long>>()
+      {
+      });
     }
     catch (NoTaskLocationException e) {
-      return ImmutableMap.of();
+      return 0L;
     }
     catch (IOException e) {
       throw Throwables.propagate(e);
@@ -270,7 +255,9 @@ public class JDBCIndexTaskClient
 
     try {
       final FullResponseHolder response = submitRequest(id, HttpMethod.GET, "offsets/end", null, true);
-      return jsonMapper.readValue(response.getContent(), new TypeReference<Map<Integer, Long>>() {});
+      return jsonMapper.readValue(response.getContent(), new TypeReference<Map<Integer, Long>>()
+      {
+      });
     }
     catch (NoTaskLocationException e) {
       return ImmutableMap.of();
@@ -280,12 +267,12 @@ public class JDBCIndexTaskClient
     }
   }
 
-  public boolean setEndOffsets(final String id, final Map<Integer, Long> endOffsets)
+  public boolean setEndOffsets(final String id, final Long endOffsets)
   {
     return setEndOffsets(id, endOffsets, false);
   }
 
-  public boolean setEndOffsets(final String id, final Map<Integer, Long> endOffsets, final boolean resume)
+  public boolean setEndOffsets(final String id, final Long endOffsets, final boolean resume)
   {
     log.debug("SetEndOffsets task[%s] endOffsets[%s] resume[%s]", id, endOffsets, resume);
 
@@ -336,18 +323,18 @@ public class JDBCIndexTaskClient
     );
   }
 
-  public ListenableFuture<Map<Integer, Long>> pauseAsync(final String id)
+  public ListenableFuture<Long> pauseAsync(final String id)
   {
     return pauseAsync(id, 0);
   }
 
-  public ListenableFuture<Map<Integer, Long>> pauseAsync(final String id, final long timeout)
+  public ListenableFuture<Long> pauseAsync(final String id, final long timeout)
   {
     return executorService.submit(
-        new Callable<Map<Integer, Long>>()
+        new Callable<Long>()
         {
           @Override
-          public Map<Integer, Long> call() throws Exception
+          public Long call() throws Exception
           {
             return pause(id, timeout);
           }
@@ -383,13 +370,13 @@ public class JDBCIndexTaskClient
     );
   }
 
-  public ListenableFuture<Map<Integer, Long>> getCurrentOffsetsAsync(final String id, final boolean retry)
+  public ListenableFuture<Long> getCurrentOffsetsAsync(final String id, final boolean retry)
   {
     return executorService.submit(
-        new Callable<Map<Integer, Long>>()
+        new Callable<Long>()
         {
           @Override
-          public Map<Integer, Long> call() throws Exception
+          public Long call() throws Exception
           {
             return getCurrentOffsets(id, retry);
           }
@@ -411,13 +398,13 @@ public class JDBCIndexTaskClient
     );
   }
 
-  public ListenableFuture<Boolean> setEndOffsetsAsync(final String id, final Map<Integer, Long> endOffsets)
+  public ListenableFuture<Boolean> setEndOffsetsAsync(final String id, final Long endOffsets)
   {
     return setEndOffsetsAsync(id, endOffsets, false);
   }
 
   public ListenableFuture<Boolean> setEndOffsetsAsync(
-      final String id, final Map<Integer, Long> endOffsets, final boolean resume
+      final String id, final Long endOffsets, final boolean resume
   )
   {
     return executorService.submit(
@@ -579,6 +566,22 @@ public class JDBCIndexTaskClient
         log.warn(e, "Exception while sending request");
         throw e;
       }
+    }
+  }
+
+  public static class NoTaskLocationException extends RuntimeException
+  {
+    public NoTaskLocationException(String message)
+    {
+      super(message);
+    }
+  }
+
+  public static class TaskNotRunnableException extends RuntimeException
+  {
+    public TaskNotRunnableException(String message)
+    {
+      super(message);
     }
   }
 }

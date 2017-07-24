@@ -24,6 +24,8 @@ import com.fasterxml.jackson.databind.jsontype.NamedType;
 import com.fasterxml.jackson.databind.module.SimpleModule;
 import com.google.common.collect.ImmutableList;
 import com.google.inject.Binder;
+import io.druid.indexing.jdbc.supervisor.JDBCSupervisorSpec;
+import io.druid.indexing.jdbc.supervisor.JDBCSupervisorTuningConfig;
 import io.druid.initialization.DruidModule;
 
 import java.util.List;
@@ -38,10 +40,9 @@ public class JDBCIndexTaskModule implements DruidModule
             .registerSubtypes(
                 new NamedType(JDBCIndexTask.class, "index_jdbc"),
                 new NamedType(JDBCDataSourceMetadata.class, "jdbc"),
-                new NamedType(JDBCIOConfig.class, "jdbc")
-//                ,
-//                new NamedType(KafkaSupervisorTuningConfig.class, "jdbc"),
-//                new NamedType(KafkaSupervisorSpec.class, "jdbc")
+                new NamedType(JDBCIOConfig.class, "jdbc"),
+                new NamedType(JDBCSupervisorTuningConfig.class, "jdbc"),
+                new NamedType(JDBCSupervisorSpec.class, "jdbc")
             )
     );
   }

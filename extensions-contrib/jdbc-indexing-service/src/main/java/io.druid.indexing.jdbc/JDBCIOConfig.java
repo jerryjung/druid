@@ -27,7 +27,6 @@ import io.druid.segment.indexing.IOConfig;
 import org.joda.time.DateTime;
 
 import java.util.List;
-import java.util.Map;
 
 public class JDBCIOConfig implements IOConfig
 {
@@ -41,7 +40,8 @@ public class JDBCIOConfig implements IOConfig
   private final String password;
   private final String connectURI;
   private final String driverClass;
-  private final Integer startPartitions;
+  private final JDBCPartitions startPartitions;
+  private final JDBCPartitions endPartitions;
   private final boolean useTransaction;
   private final boolean pauseAfterRead;
   private final Optional<DateTime> minimumMessageTime;
@@ -57,7 +57,8 @@ public class JDBCIOConfig implements IOConfig
       @JsonProperty("password") String password,
       @JsonProperty("connectURI") String connectURI,
       @JsonProperty("driverClass") String driverClass,
-      @JsonProperty("startPartitions") Integer startPartitions,
+      @JsonProperty("startPartitions") JDBCPartitions startPartitions,
+      @JsonProperty("endPartitions") JDBCPartitions endPartitions,
       @JsonProperty("useTransaction") Boolean useTransaction,
       @JsonProperty("pauseAfterRead") Boolean pauseAfterRead,
       @JsonProperty("minimumMessageTime") DateTime minimumMessageTime,
@@ -70,21 +71,37 @@ public class JDBCIOConfig implements IOConfig
     this.tableName = Preconditions.checkNotNull(tableName, "tableName");
     this.user = Preconditions.checkNotNull(user, "user");
     this.password = Preconditions.checkNotNull(password, "password");
-    this.connectURI = Preconditions.checkNotNull(connectURI, "connectURI");
-    this.driverClass = Preconditions.checkNotNull(driverClass, "driverClass");
-    this.startPartitions = startPartitions != null ? startPartitions : 0;
+    this.connectURI = Preconditions.checkNotNull(connectURI, "jdbc:derby:memory:myDB;create=true");
+    this.driverClass = Preconditions.checkNotNull(driverClass, "org.apache.derby.jdbc.EmbeddedDriver");
+    this.startPartitions = Preconditions.checkNotNull(startPartitions, "startPartitions");
+    this.endPartitions = endPartitions;
     this.useTransaction = useTransaction != null ? useTransaction : DEFAULT_USE_TRANSACTION;
     this.pauseAfterRead = pauseAfterRead != null ? pauseAfterRead : DEFAULT_PAUSE_AFTER_READ;
     this.minimumMessageTime = Optional.fromNullable(minimumMessageTime);
     this.skipOffsetGaps = skipOffsetGaps != null ? skipOffsetGaps : DEFAULT_SKIP_OFFSET_GAPS;
-    this.query = Preconditions.checkNotNull(query, "query");
+    this.query = Preconditions.checkNotNull(query, "select 1");
     this.columns = columns;
+
+    Preconditions.checkArgument(
+        startPartitions.getTable().equals(endPartitions.getTable()),
+        "start table and end table must match"
+    );
+
+    Preconditions.checkArgument(
+        endPartitions.getOffset() >= startPartitions.getOffset(),
+        "end offset must be >= start offset for partition[%s]"
+    );
   }
 
   @JsonProperty
-  public Integer getStartPartitions()
+  public JDBCPartitions getStartPartitions()
   {
     return startPartitions;
+  }
+
+  public JDBCPartitions getEndPartitions()
+  {
+    return endPartitions;
   }
 
   @JsonProperty
@@ -152,6 +169,7 @@ public class JDBCIOConfig implements IOConfig
   {
     return query;
   }
+
   @JsonProperty
   public List<String> getColumns()
   {

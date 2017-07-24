@@ -22,7 +22,6 @@ package io.druid.indexing.jdbc;
 import com.fasterxml.jackson.databind.JsonMappingException;
 import com.fasterxml.jackson.databind.Module;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.google.common.collect.ImmutableMap;
 import io.druid.jackson.DefaultObjectMapper;
 import io.druid.segment.indexing.IOConfig;
 import org.hamcrest.CoreMatchers;
@@ -34,6 +33,8 @@ import org.junit.rules.ExpectedException;
 
 public class JDBCIOConfigTest
 {
+  @Rule
+  public final ExpectedException exception = ExpectedException.none();
   private final ObjectMapper mapper;
 
   public JDBCIOConfigTest()
@@ -42,17 +43,23 @@ public class JDBCIOConfigTest
     mapper.registerModules((Iterable<Module>) new JDBCIndexTaskModule().getJacksonModules());
   }
 
-  @Rule
-  public final ExpectedException exception = ExpectedException.none();
-
   @Test
   public void testSerdeWithDefaults() throws Exception
   {
     String jsonStr = "{\n"
                      + "  \"type\": \"jdbc\",\n"
                      + "  \"baseSequenceName\": \"my-sequence-name\",\n"
-                     + "  \"tableName\": \"my-table-name\",\n"
-                     + "  \"startPartitions\": 1\n"
+                     + "  \"tableName\": \"dummy\",\n"
+                     + "  \"user\": \"dummy\",\n"
+                     + "  \"password\": \"dummy\",\n"
+                     + "  \"connectURI\": \"dummy\",\n"
+                     + "  \"driverClass\": \"dummy\",\n"
+                     + "  \"startPartitions\": {\"table\":\"table\",\"offset\":\"10\"},\n"
+                     + "  \"endPartitions\": {\"table\":\"table\",\"offset\":\"10\"},\n"
+                     + "  \"useTransaction\": true,\n"
+                     + "  \"pauseAfterRead\": false,\n"
+                     + "  \"query\": \"dummy\",\n"
+                     + "  \"columns\": [\"dummy\"]\n"
                      + "}";
 
     JDBCIOConfig config = (JDBCIOConfig) mapper.readValue(
@@ -65,7 +72,7 @@ public class JDBCIOConfigTest
     );
 
     Assert.assertEquals("my-sequence-name", config.getBaseSequenceName());
-    Assert.assertEquals("my-table-name", config.getTableName());
+    Assert.assertEquals("dummy", config.getTableName());
     Assert.assertEquals(true, config.isUseTransaction());
     Assert.assertEquals(false, config.isPauseAfterRead());
     Assert.assertFalse("minimumMessageTime", config.getMinimumMessageTime().isPresent());
@@ -78,9 +85,14 @@ public class JDBCIOConfigTest
     String jsonStr = "{\n"
                      + "  \"type\": \"jdbc\",\n"
                      + "  \"baseSequenceName\": \"my-sequence-name\",\n"
-                     + "  \"startPartitions\": {\"topic\":\"mytopic\", \"partitionOffsetMap\" : {\"0\":1, \"1\":10}},\n"
-                     + "  \"endPartitions\": {\"topic\":\"mytopic\", \"partitionOffsetMap\" : {\"0\":15, \"1\":200}},\n"
-                     + "  \"consumerProperties\": {\"bootstrap.servers\":\"localhost:9092\"},\n"
+                     + "  \"tableName\": \"dummy\",\n"
+                     + "  \"user\": \"dummy\",\n"
+                     + "  \"password\": \"dummy\",\n"
+                     + "  \"connectURI\": \"dummy\",\n"
+                     + "  \"driverClass\": \"dummy\",\n"
+                     + "  \"startPartitions\": {\"table\":\"table\",\"offset\":\"0\"},\n"
+                     + "  \"endPartitions\": {\"table\":\"table\",\"offset\":\"10\"},\n"
+                     + "  \"query\": \"dummy\",\n"
                      + "  \"useTransaction\": false,\n"
                      + "  \"pauseAfterRead\": true,\n"
                      + "  \"minimumMessageTime\": \"2016-05-31T12:00Z\",\n"
@@ -97,11 +109,8 @@ public class JDBCIOConfigTest
     );
 
     Assert.assertEquals("my-sequence-name", config.getBaseSequenceName());
-//    Assert.assertEquals("mytopic", config.getStartPartitions().getTopic());
-//    Assert.assertEquals(ImmutableMap.of(0, 1L, 1, 10L), config.getStartPartitions().getPartitionOffsetMap());
-//    Assert.assertEquals("mytopic", config.getEndPartitions().getTopic());
-//    Assert.assertEquals(ImmutableMap.of(0, 15L, 1, 200L), config.getEndPartitions().getPartitionOffsetMap());
-//    Assert.assertEquals(ImmutableMap.of("bootstrap.servers", "localhost:9092"), config.getConsumerProperties());
+    Assert.assertEquals("table", config.getStartPartitions().getTable());
+    Assert.assertEquals(new Integer(0), config.getStartPartitions().getOffset());
     Assert.assertEquals(false, config.isUseTransaction());
     Assert.assertEquals(true, config.isPauseAfterRead());
     Assert.assertEquals(new DateTime("2016-05-31T12:00Z"), config.getMinimumMessageTime().get());
@@ -113,12 +122,17 @@ public class JDBCIOConfigTest
   {
     String jsonStr = "{\n"
                      + "  \"type\": \"jdbc\",\n"
-                     + "  \"startPartitions\": {\"topic\":\"mytopic\", \"partitionOffsetMap\" : {\"0\":1, \"1\":10}},\n"
-                     + "  \"endPartitions\": {\"topic\":\"mytopic\", \"partitionOffsetMap\" : {\"0\":15, \"1\":200}},\n"
-                     + "  \"consumerProperties\": {\"bootstrap.servers\":\"localhost:9092\"},\n"
-                     + "  \"useTransaction\": false,\n"
-                     + "  \"pauseAfterRead\": true,\n"
-                     + "  \"minimumMessageTime\": \"2016-05-31T12:00Z\"\n"
+                     + "  \"tableName\": \"dummy\",\n"
+                     + "  \"user\": \"dummy\",\n"
+                     + "  \"password\": \"dummy\",\n"
+                     + "  \"connectURI\": \"dummy\",\n"
+                     + "  \"driverClass\": \"dummy\",\n"
+                     + "  \"startPartitions\": {\"table\":\"table\",\"offset\":\"10\"},\n"
+                     + "  \"endPartitions\": {\"table\":\"table\",\"offset\":\"10\"},\n"
+                     + "  \"useTransaction\": true,\n"
+                     + "  \"pauseAfterRead\": false,\n"
+                     + "  \"query\": \"dummy\",\n"
+                     + "  \"columns\": [\"dummy\"]\n"
                      + "}";
 
     exception.expect(JsonMappingException.class);
@@ -133,11 +147,16 @@ public class JDBCIOConfigTest
     String jsonStr = "{\n"
                      + "  \"type\": \"jdbc\",\n"
                      + "  \"baseSequenceName\": \"my-sequence-name\",\n"
-                     + "  \"endPartitions\": {\"topic\":\"mytopic\", \"partitionOffsetMap\" : {\"0\":15, \"1\":200}},\n"
-                     + "  \"consumerProperties\": {\"bootstrap.servers\":\"localhost:9092\"},\n"
-                     + "  \"useTransaction\": false,\n"
-                     + "  \"pauseAfterRead\": true,\n"
-                     + "  \"minimumMessageTime\": \"2016-05-31T12:00Z\"\n"
+                     + "  \"tableName\": \"dummy\",\n"
+                     + "  \"user\": \"dummy\",\n"
+                     + "  \"password\": \"dummy\",\n"
+                     + "  \"connectURI\": \"dummy\",\n"
+                     + "  \"driverClass\": \"dummy\",\n"
+                     + "  \"endPartitions\": {\"table\":\"table\",\"offset\":\"10\"},\n"
+                     + "  \"useTransaction\": true,\n"
+                     + "  \"pauseAfterRead\": false,\n"
+                     + "  \"query\": \"dummy\",\n"
+                     + "  \"columns\": [\"dummy\"]\n"
                      + "}";
 
     exception.expect(JsonMappingException.class);
@@ -147,42 +166,28 @@ public class JDBCIOConfigTest
   }
 
   @Test
-  public void testStartAndEndTopicMatch() throws Exception
+  public void testStartAndEndTableMatch() throws Exception
   {
     String jsonStr = "{\n"
                      + "  \"type\": \"jdbc\",\n"
                      + "  \"baseSequenceName\": \"my-sequence-name\",\n"
-                     + "  \"startPartitions\": {\"topic\":\"mytopic\", \"partitionOffsetMap\" : {\"0\":1, \"1\":10}},\n"
-                     + "  \"endPartitions\": {\"topic\":\"other\", \"partitionOffsetMap\" : {\"0\":15, \"1\":200}},\n"
-                     + "  \"consumerProperties\": {\"bootstrap.servers\":\"localhost:9092\"},\n"
+                     + "  \"tableName\": \"dummy\",\n"
+                     + "  \"user\": \"dummy\",\n"
+                     + "  \"password\": \"dummy\",\n"
+                     + "  \"connectURI\": \"dummy\",\n"
+                     + "  \"driverClass\": \"dummy\",\n"
+                     + "  \"startPartitions\": {\"table\":\"table\",\"offset\":\"10\"},\n"
+                     + "  \"endPartitions\": {\"table\":\"table1\",\"offset\":\"10\"},\n"
                      + "  \"useTransaction\": false,\n"
                      + "  \"pauseAfterRead\": true,\n"
-                     + "  \"minimumMessageTime\": \"2016-05-31T12:00Z\"\n"
+                     + "  \"minimumMessageTime\": \"2016-05-31T12:00Z\",\n"
+                     + "  \"query\": \"dummy\",\n"
+                     + "  \"columns\": [\"dummy\"]\n"
                      + "}";
 
     exception.expect(JsonMappingException.class);
     exception.expectCause(CoreMatchers.isA(IllegalArgumentException.class));
-    exception.expectMessage(CoreMatchers.containsString("start topic and end topic must match"));
-    mapper.readValue(jsonStr, IOConfig.class);
-  }
-
-  @Test
-  public void testStartAndEndPartitionSetMatch() throws Exception
-  {
-    String jsonStr = "{\n"
-                     + "  \"type\": \"jdbc\",\n"
-                     + "  \"baseSequenceName\": \"my-sequence-name\",\n"
-                     + "  \"startPartitions\": {\"topic\":\"mytopic\", \"partitionOffsetMap\" : {\"0\":1, \"1\":10}},\n"
-                     + "  \"endPartitions\": {\"topic\":\"mytopic\", \"partitionOffsetMap\" : {\"0\":15}},\n"
-                     + "  \"consumerProperties\": {\"bootstrap.servers\":\"localhost:9092\"},\n"
-                     + "  \"useTransaction\": false,\n"
-                     + "  \"pauseAfterRead\": true,\n"
-                     + "  \"minimumMessageTime\": \"2016-05-31T12:00Z\"\n"
-                     + "}";
-
-    exception.expect(JsonMappingException.class);
-    exception.expectCause(CoreMatchers.isA(IllegalArgumentException.class));
-    exception.expectMessage(CoreMatchers.containsString("start partition set and end partition set must match"));
+    exception.expectMessage(CoreMatchers.containsString("each partition table name must match"));
     mapper.readValue(jsonStr, IOConfig.class);
   }
 
@@ -192,12 +197,18 @@ public class JDBCIOConfigTest
     String jsonStr = "{\n"
                      + "  \"type\": \"jdbc\",\n"
                      + "  \"baseSequenceName\": \"my-sequence-name\",\n"
-                     + "  \"startPartitions\": {\"topic\":\"mytopic\", \"partitionOffsetMap\" : {\"0\":1, \"1\":10}},\n"
-                     + "  \"endPartitions\": {\"topic\":\"mytopic\", \"partitionOffsetMap\" : {\"0\":15, \"1\":2}},\n"
-                     + "  \"consumerProperties\": {\"bootstrap.servers\":\"localhost:9092\"},\n"
+                     + "  \"tableName\": \"dummy\",\n"
+                     + "  \"user\": \"dummy\",\n"
+                     + "  \"password\": \"dummy\",\n"
+                     + "  \"connectURI\": \"dummy\",\n"
+                     + "  \"driverClass\": \"dummy\",\n"
+                     + "  \"startPartitions\": {\"table\":\"table\",\"offset\":\"20\"},\n"
+                     + "  \"endPartitions\": {\"table\":\"table\",\"offset\":\"10\"},\n"
                      + "  \"useTransaction\": false,\n"
                      + "  \"pauseAfterRead\": true,\n"
-                     + "  \"minimumMessageTime\": \"2016-05-31T12:00Z\"\n"
+                     + "  \"minimumMessageTime\": \"2016-05-31T12:00Z\",\n"
+                     + "  \"query\": \"dummy\",\n"
+                     + "  \"columns\": [\"dummy\"]\n"
                      + "}";
 
     exception.expect(JsonMappingException.class);
