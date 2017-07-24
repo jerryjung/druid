@@ -27,12 +27,10 @@ import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Lists;
 import com.google.common.util.concurrent.Futures;
 import com.google.common.util.concurrent.ListenableFuture;
-import io.druid.data.input.impl.DimensionSchema;
 import io.druid.data.input.impl.DimensionsSpec;
 import io.druid.data.input.impl.JSONParseSpec;
 import io.druid.data.input.impl.JSONPathFieldSpec;
 import io.druid.data.input.impl.JSONPathSpec;
-import io.druid.data.input.impl.StringDimensionSchema;
 import io.druid.data.input.impl.StringInputRowParser;
 import io.druid.data.input.impl.TimestampSpec;
 import io.druid.indexing.common.TaskInfoProvider;
@@ -332,18 +330,12 @@ public class JDBCSupervisorTest extends EasyMockSupport
     verifyAll();
 
     JDBCIndexTask task1 = captured.getValues().get(0);
-    Assert.assertEquals(3, task1.getIOConfig().getStartPartitions().getOffset().intValue());
-    Assert.assertEquals(3, task1.getIOConfig().getEndPartitions().getOffset().intValue());
-    Assert.assertEquals(0L, (long) task1.getIOConfig().getStartPartitions().getOffset().intValue());
-    Assert.assertEquals(0L, (long) task1.getIOConfig().getStartPartitions().getOffset().intValue());
-    Assert.assertEquals(0L, (long) task1.getIOConfig().getStartPartitions().getOffset().intValue());
+    Assert.assertEquals(0, task1.getIOConfig().getStartPartitions().getOffset().intValue());
+    Assert.assertEquals(0, task1.getIOConfig().getEndPartitions().getOffset().intValue());
 
     JDBCIndexTask task2 = captured.getValues().get(1);
-    Assert.assertEquals(3, task2.getIOConfig().getStartPartitions().getOffset().intValue());
-    Assert.assertEquals(3, task2.getIOConfig().getEndPartitions().getOffset().intValue());
-    Assert.assertEquals(0L, (long) task2.getIOConfig().getStartPartitions().getOffset().intValue());
-    Assert.assertEquals(0L, (long) task2.getIOConfig().getStartPartitions().getOffset().intValue());
-    Assert.assertEquals(0L, (long) task2.getIOConfig().getStartPartitions().getOffset().intValue());
+    Assert.assertEquals(0, task2.getIOConfig().getStartPartitions().getOffset().intValue());
+    Assert.assertEquals(0, task2.getIOConfig().getEndPartitions().getOffset().intValue());
   }
 
   @Test
@@ -442,9 +434,7 @@ public class JDBCSupervisorTest extends EasyMockSupport
     JDBCIndexTask task = captured.getValue();
     JDBCIOConfig taskConfig = task.getIOConfig();
     Assert.assertEquals("sequenceName-0", taskConfig.getBaseSequenceName());
-    Assert.assertEquals(10L, (long) taskConfig.getStartPartitions().getOffset().intValue());
-    Assert.assertEquals(20L, (long) taskConfig.getStartPartitions().getOffset().intValue());
-    Assert.assertEquals(30L, (long) taskConfig.getStartPartitions().getOffset().intValue());
+    Assert.assertEquals(0, (long) taskConfig.getStartPartitions().getOffset().intValue());
   }
 
   @Test(expected = ISE.class)
@@ -1312,7 +1302,7 @@ public class JDBCSupervisorTest extends EasyMockSupport
   {
     final TaskLocation location = new TaskLocation("testHost", 1234);
 
-    supervisor = getSupervisor(2, 2, true, "PT1M", null, false);
+    supervisor = getSupervisor(2, 1, true, "PT1M", null, false);
 
     Capture<Task> captured = Capture.newInstance(CaptureType.ALL);
     expect(taskMaster.getTaskQueue()).andReturn(Optional.of(taskQueue)).anyTimes();
@@ -1325,7 +1315,7 @@ public class JDBCSupervisorTest extends EasyMockSupport
             10
         )
     ).anyTimes();
-    expect(taskQueue.add(capture(captured))).andReturn(true).times(4);
+    expect(taskQueue.add(capture(captured))).andReturn(true).times(2);
     taskRunner.registerListener(anyObject(TaskRunnerListener.class), anyObject(Executor.class));
     replayAll();
 
