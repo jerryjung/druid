@@ -25,16 +25,19 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 public class JDBCPartitions
 {
   private final String table;
-  private final Integer offset;
+  private final Integer startOffset;
+  private final Integer endOffset;
 
   @JsonCreator
   public JDBCPartitions(
       @JsonProperty("table") final String table,
-      @JsonProperty("offset") final Integer offset
+      @JsonProperty("startOffset") final Integer startOffset,
+      @JsonProperty("endOffset") final Integer endOffset
   )
   {
     this.table = table;
-    this.offset = offset;
+    this.startOffset = startOffset;
+    this.endOffset = endOffset;
 
   }
 
@@ -44,37 +47,17 @@ public class JDBCPartitions
     return table;
   }
 
+
   @JsonProperty
-  public Integer getOffset()
+  public Integer getStartOffset()
   {
-    return offset;
+    return startOffset;
   }
 
-  @Override
-  public boolean equals(Object o)
+  @JsonProperty
+  public Integer getEndOffset()
   {
-    if (this == o) {
-      return true;
-    }
-    if (o == null || getClass() != o.getClass()) {
-      return false;
-    }
-
-    JDBCPartitions that = (JDBCPartitions) o;
-
-    if (table != null ? !table.equals(that.table) : that.table != null) {
-      return false;
-    }
-    return offset != null ? offset.equals(that.offset) : that.offset == null;
-
-  }
-
-  @Override
-  public int hashCode()
-  {
-    int result = table != null ? table.hashCode() : 0;
-    result = 31 * result + (offset != null ? offset.hashCode() : 0);
-    return result;
+    return endOffset;
   }
 
   @Override
@@ -82,7 +65,8 @@ public class JDBCPartitions
   {
     return "JDBCPartitions{" +
            "table='" + table + '\'' +
-           ", offset=" + offset +
+           ", startOffset=" + startOffset +
+           ", endOffset=" + endOffset +
            '}';
   }
 }

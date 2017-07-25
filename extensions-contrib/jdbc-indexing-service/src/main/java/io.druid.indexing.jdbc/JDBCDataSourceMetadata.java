@@ -27,17 +27,20 @@ import io.druid.java.util.common.IAE;
 public class JDBCDataSourceMetadata implements DataSourceMetadata
 {
   private String table;
-  private Integer offsets;
+  private Integer startOffset;
+  private Integer endOffset;
 
 
   @JsonCreator
   public JDBCDataSourceMetadata(
       @JsonProperty("table") String table,
-      @JsonProperty("offsets") Integer offsets
+      @JsonProperty("startOffset") Integer startOffset,
+      @JsonProperty("endOffset") Integer endOffset
   )
   {
     this.table = table;
-    this.offsets = offsets;
+    this.startOffset = startOffset;
+    this.endOffset = endOffset;
   }
 
 
@@ -47,10 +50,16 @@ public class JDBCDataSourceMetadata implements DataSourceMetadata
     return table;
   }
 
-  @JsonProperty("offsets")
-  public Integer getOffsets()
+  @JsonProperty("startOffset")
+  public Integer getStartOffset()
   {
-    return offsets;
+    return startOffset;
+  }
+
+  @JsonProperty("endOffset")
+  public Integer getEndOffset()
+  {
+    return endOffset;
   }
 
   @Override

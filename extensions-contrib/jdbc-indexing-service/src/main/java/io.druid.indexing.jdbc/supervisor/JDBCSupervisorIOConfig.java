@@ -23,6 +23,7 @@ import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.google.common.base.Optional;
 import com.google.common.base.Preconditions;
+import io.druid.indexing.jdbc.JDBCPartitions;
 import org.joda.time.Duration;
 import org.joda.time.Period;
 
@@ -42,10 +43,9 @@ public class JDBCSupervisorIOConfig
   private final Duration taskDuration;
   private final Duration startDelay;
   private final Duration period;
-  private final boolean useEarliestOffset;
+  private final JDBCPartitions partitions;
   private final Duration completionTimeout;
   private final Optional<Duration> lateMessageRejectionPeriod;
-  private final boolean skipOffsetGaps;
   private final String query;
   private final List<String> columns;
 
@@ -61,10 +61,9 @@ public class JDBCSupervisorIOConfig
       @JsonProperty("taskDuration") Period taskDuration,
       @JsonProperty("startDelay") Period startDelay,
       @JsonProperty("period") Period period,
-      @JsonProperty("useEarliestOffset") Boolean useEarliestOffset,
+      @JsonProperty("partitions") JDBCPartitions partitions,
       @JsonProperty("completionTimeout") Period completionTimeout,
       @JsonProperty("lateMessageRejectionPeriod") Period lateMessageRejectionPeriod,
-      @JsonProperty("skipOffsetGaps") Boolean skipOffsetGaps,
       @JsonProperty("query") String query,
       @JsonProperty("columns") List<String> columns
   )
@@ -74,19 +73,17 @@ public class JDBCSupervisorIOConfig
     this.password = Preconditions.checkNotNull(password, "password");
     this.connectURI = Preconditions.checkNotNull(connectURI, "jdbc:derby:memory:myDB;create=true");
     this.driverClass = Preconditions.checkNotNull(driverClass, "org.apache.derby.jdbc.EmbeddedDriver");
-
     this.replicas = replicas != null ? replicas : 1;
     this.taskCount = taskCount != null ? taskCount : 1;
     this.taskDuration = defaultDuration(taskDuration, "PT1H");
     this.startDelay = defaultDuration(startDelay, "PT5S");
     this.period = defaultDuration(period, "PT30S");
-    this.useEarliestOffset = useEarliestOffset != null ? useEarliestOffset : false;
     this.completionTimeout = defaultDuration(completionTimeout, "PT30M");
     this.lateMessageRejectionPeriod = lateMessageRejectionPeriod == null
                                       ? Optional.<Duration>absent()
                                       : Optional.of(lateMessageRejectionPeriod.toStandardDuration());
-    this.skipOffsetGaps = skipOffsetGaps != null ? skipOffsetGaps : false;
-    this.query = Preconditions.checkNotNull(query, "select 1");
+    this.partitions = partitions;
+    this.query = query;
     this.columns = columns;
   }
 
@@ -163,11 +160,10 @@ public class JDBCSupervisorIOConfig
   }
 
   @JsonProperty
-  public boolean isUseEarliestOffset()
+  public JDBCPartitions getPartitions()
   {
-    return useEarliestOffset;
+    return partitions;
   }
-
   @JsonProperty
   public Duration getCompletionTimeout()
   {
@@ -180,26 +176,28 @@ public class JDBCSupervisorIOConfig
     return lateMessageRejectionPeriod;
   }
 
-  @JsonProperty
-  public boolean isSkipOffsetGaps()
-  {
-    return skipOffsetGaps;
-  }
+
 
   @Override
   public String toString()
   {
     return "JDBCSupervisorIOConfig{" +
            "table='" + table + '\'' +
+           ", user='" + user + '\'' +
+           ", password='" + password + '\'' +
+           ", connectURI='" + connectURI + '\'' +
+           ", driverClass='" + driverClass + '\'' +
            ", replicas=" + replicas +
            ", taskCount=" + taskCount +
            ", taskDuration=" + taskDuration +
            ", startDelay=" + startDelay +
            ", period=" + period +
-           ", useEarliestOffset=" + useEarliestOffset +
+           ", partitionS=" + partitions.getStartOffset()+
+           ", partitionE=" + partitions.getEndOffset()+
            ", completionTimeout=" + completionTimeout +
            ", lateMessageRejectionPeriod=" + lateMessageRejectionPeriod +
-           ", skipOffsetGaps=" + skipOffsetGaps +
+           ", query='" + query + '\'' +
+           ", columns=" + columns +
            '}';
   }
 

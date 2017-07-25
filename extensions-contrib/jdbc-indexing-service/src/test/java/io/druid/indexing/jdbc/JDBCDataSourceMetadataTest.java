@@ -24,14 +24,14 @@ import org.junit.Test;
 
 public class JDBCDataSourceMetadataTest
 {
-  private static final JDBCDataSourceMetadata JM0 = JM("foo", 0);
-  private static final JDBCDataSourceMetadata JM1 = JM("foo", 1);
-  private static final JDBCDataSourceMetadata JM2 = JM("foo", 2);
-  private static final JDBCDataSourceMetadata JM3 = JM("foo", 3);
+  private static final JDBCDataSourceMetadata JM0 = JM("foo", 0, 10);
+  private static final JDBCDataSourceMetadata JM1 = JM("foo", 1, 10);
+  private static final JDBCDataSourceMetadata JM2 = JM("foo", 2, 10);
+  private static final JDBCDataSourceMetadata JM3 = JM("foo", 3, 10);
 
-  private static JDBCDataSourceMetadata JM(String datasource, int offsets)
+  private static JDBCDataSourceMetadata JM(String datasource, int startOffset, int endOffset)
   {
-    return new JDBCDataSourceMetadata(datasource, offsets);
+    return new JDBCDataSourceMetadata(datasource, startOffset, endOffset);
   }
 
   @Test
@@ -71,27 +71,27 @@ public class JDBCDataSourceMetadataTest
   public void testPlus()
   {
     Assert.assertEquals(
-        JM("foo", 1),
+        JM("foo", 1,10),
         JM1.plus(JM3)
     );
 
     Assert.assertEquals(
-        JM("foo", 0),
+        JM("foo", 0,10),
         JM0.plus(JM2)
     );
 
     Assert.assertEquals(
-        JM("foo", 2),
+        JM("foo", 2,10),
         JM1.plus(JM2)
     );
 
     Assert.assertEquals(
-        JM("foo", 3),
+        JM("foo", 3,10),
         JM2.plus(JM1)
     );
 
     Assert.assertEquals(
-        JM("foo", 4),
+        JM("foo", 4,10),
         JM2.plus(JM2)
     );
   }
@@ -100,27 +100,27 @@ public class JDBCDataSourceMetadataTest
   public void testMinus()
   {
     Assert.assertEquals(
-        JM("foo", 1),
+        JM("foo", 1,10),
         JM1.minus(JM3)
     );
 
     Assert.assertEquals(
-        JM("foo", 2),
+        JM("foo", 2,10),
         JM0.minus(JM2)
     );
 
     Assert.assertEquals(
-        JM("foo", 3),
+        JM("foo", 3,10),
         JM1.minus(JM2)
     );
 
     Assert.assertEquals(
-        JM("foo", 2),
+        JM("foo", 2,10),
         JM2.minus(JM1)
     );
 
     Assert.assertEquals(
-        JM("foo", 1),
+        JM("foo", 1,10),
         JM2.minus(JM2)
     );
   }

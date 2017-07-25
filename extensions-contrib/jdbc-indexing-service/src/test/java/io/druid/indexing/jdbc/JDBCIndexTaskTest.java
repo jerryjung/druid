@@ -298,12 +298,10 @@ public class JDBCIndexTaskTest
             "druid",
             uri,
             "com.mysql.jdbc.Driver",
-            new JDBCPartitions(tableName, 0),
-            new JDBCPartitions(tableName, 10),
+            new JDBCPartitions(tableName, 0, 10),
             true,
             false,
             null,
-            false,
             "select * from " + tableName + " limit 10",
             columns
         ),
@@ -349,12 +347,10 @@ public class JDBCIndexTaskTest
             "druid",
             uri,
             "com.mysql.jdbc.Driver",
-            new JDBCPartitions(tableName, 0),
-            new JDBCPartitions(tableName, 10),
+            new JDBCPartitions(tableName, 0, 10),
             true,
             false,
             null,
-            false,
             "select * from " + tableName + " limit 0",
             columns
         ),
@@ -393,13 +389,11 @@ public class JDBCIndexTaskTest
             "druid",
             uri,
             "com.mysql.jdbc.Driver",
-            new JDBCPartitions(tableName, 0),
-            new JDBCPartitions(tableName, 10),
+            new JDBCPartitions(tableName, 0, 10),
             true,
             false,
             null,
-            false,
-            "select * from " + tableName + " limit 10",
+            null,
             columns
         ),
         null,
@@ -447,12 +441,10 @@ public class JDBCIndexTaskTest
             "druid",
             uri,
             "com.mysql.jdbc.Driver",
-            new JDBCPartitions(tableName, 0),
-            new JDBCPartitions(tableName, 10),
+            new JDBCPartitions(tableName, 0, 10),
             true,
             false,
             null,
-            false,
             "select * from " + tableName + " limit 1",
             columns
         ),
@@ -496,12 +488,10 @@ public class JDBCIndexTaskTest
             "druid",
             uri,
             "com.mysql.jdbc.Driver",
-            new JDBCPartitions(tableName, 0),
-            new JDBCPartitions(tableName, 10),
+            new JDBCPartitions(tableName, 0, 10),
             true,
             false,
             null,
-            false,
             "select * from " + tableName + " limit 0",
             columns
         ),
@@ -536,12 +526,10 @@ public class JDBCIndexTaskTest
             "druid",
             uri,
             "com.mysql.jdbc.Driver",
-            new JDBCPartitions(tableName, 0),
-            new JDBCPartitions(tableName, 10),
+            new JDBCPartitions(tableName, 0, 10),
             true,
             false,
             null,
-            false,
             "select * from " + tableName + " where id =1  ",
             columns
         ),
@@ -557,12 +545,10 @@ public class JDBCIndexTaskTest
             "druid",
             uri,
             "com.mysql.jdbc.Driver",
-            new JDBCPartitions(tableName, 0),
-            new JDBCPartitions(tableName, 10),
+            new JDBCPartitions(tableName, 0, 10),
             true,
             false,
             null,
-            false,
             "select * from " + tableName + " where id =1 ",
             columns
         ),
@@ -593,7 +579,7 @@ public class JDBCIndexTaskTest
     Assert.assertEquals(ImmutableSet.of(desc1), publishedDescriptors());
 
     Assert.assertEquals(
-        new JDBCDataSourceMetadata(table, 0),
+        new JDBCDataSourceMetadata(table, 0, 10),
         metadataStorageCoordinator.getDataSourceMetadata(DATA_SCHEMA.getDataSource())
     );
 
@@ -613,13 +599,11 @@ public class JDBCIndexTaskTest
             "druid",
             uri,
             "com.mysql.jdbc.Driver",
-            new JDBCPartitions(tableName, 0),
-            new JDBCPartitions(tableName, 10),
+            new JDBCPartitions(tableName, 0, 10),
             true,
             false,
             null,
-            false,
-            "select * from " + tableName + " where id <= 10",
+            null,
             columns
         ),
         null,
@@ -634,13 +618,11 @@ public class JDBCIndexTaskTest
             "druid",
             uri,
             "com.mysql.jdbc.Driver",
-            new JDBCPartitions(tableName, 0),
-            new JDBCPartitions(tableName, 10),
+            new JDBCPartitions(tableName, 0, 10),
             true,
             false,
             null,
-            false,
-            "select * from " + tableName + " where id > 10 and id <= 20",
+            null,
             columns
         ),
         null,
@@ -656,13 +638,13 @@ public class JDBCIndexTaskTest
 
     // Run second task
     final ListenableFuture<TaskStatus> future2 = runTask(task2);
-    Assert.assertEquals(TaskStatus.Status.FAILED, future2.get().getStatusCode());
+    Assert.assertEquals(TaskStatus.Status.SUCCESS, future2.get().getStatusCode());
 
     // Check metrics
     Assert.assertEquals(10, task1.getFireDepartmentMetrics().processed());
     Assert.assertEquals(0, task1.getFireDepartmentMetrics().unparseable());
     Assert.assertEquals(0, task1.getFireDepartmentMetrics().thrownAway());
-    Assert.assertEquals(0, task2.getFireDepartmentMetrics().processed());
+    Assert.assertEquals(10, task2.getFireDepartmentMetrics().processed());
     Assert.assertEquals(0, task2.getFireDepartmentMetrics().unparseable());
     Assert.assertEquals(0, task2.getFireDepartmentMetrics().thrownAway());
 
@@ -673,7 +655,7 @@ public class JDBCIndexTaskTest
     Assert.assertEquals(ImmutableSet.of(desc1, desc2, desc3), publishedDescriptors());
 
     Assert.assertEquals(
-        new JDBCDataSourceMetadata(table, 0),
+        new JDBCDataSourceMetadata(table, 0, 10),
         metadataStorageCoordinator.getDataSourceMetadata(DATA_SCHEMA.getDataSource())
     );
     // Check segments in deep storage
@@ -693,12 +675,10 @@ public class JDBCIndexTaskTest
                                                 "druid",
                                                 uri,
                                                 "com.mysql.jdbc.Driver",
-                                                new JDBCPartitions(tableName, 0),
-                                                new JDBCPartitions(tableName, 10),
+                                                new JDBCPartitions(tableName, 0, 10),
                                                 false,
                                                 false,
                                                 null,
-                                                false,
                                                 "select * from " + tableName + " where id <= 3",
                                                 columns
                                             ),
@@ -715,12 +695,10 @@ public class JDBCIndexTaskTest
             "druid",
             uri,
             "com.mysql.jdbc.Driver",
-            new JDBCPartitions(tableName, 0),
-            new JDBCPartitions(tableName, 10),
+            new JDBCPartitions(tableName, 0, 10),
             false,
             false,
             null,
-            false,
             "select * from " + tableName + " where id > 3 and id <= 6",
             columns
         ),
@@ -776,13 +754,11 @@ public class JDBCIndexTaskTest
             "druid",
             uri,
             "com.mysql.jdbc.Driver",
-            new JDBCPartitions(tableName, 0),
-            new JDBCPartitions(tableName, 10),
+            new JDBCPartitions(tableName, 0, 10),
             true,
             false,
             null,
-            false,
-            "select * from " + tableName + " limit 10",
+            null,
             columns
         ),
         null,
@@ -797,13 +773,11 @@ public class JDBCIndexTaskTest
             "druid",
             uri,
             "com.mysql.jdbc.Driver",
-            new JDBCPartitions(tableName, 0),
-            new JDBCPartitions(tableName, 10),
+            new JDBCPartitions(tableName, 0, 10),
             true,
             false,
             null,
-            false,
-            "select * from " + tableName + " limit 10",
+            null,
             columns
         ),
         null,
@@ -853,12 +827,10 @@ public class JDBCIndexTaskTest
             "druid",
             uri,
             "com.mysql.jdbc.Driver",
-            new JDBCPartitions(tableName, 0),
-            new JDBCPartitions(tableName, 10),
+            new JDBCPartitions(tableName, 0, 10),
             true,
             false,
             null,
-            false,
             "select * from " + tableName + " limit 1",
             columns
         ),
@@ -891,12 +863,10 @@ public class JDBCIndexTaskTest
             "druid",
             uri,
             "com.mysql.jdbc.Driver",
-            new JDBCPartitions(tableName, 0),
-            new JDBCPartitions(tableName, 10),
+            new JDBCPartitions(tableName, 0, 10),
             true,
             false,
             null,
-            false,
             "select * from " + tableName + " limit 1",
             columns
         ),
@@ -925,7 +895,7 @@ public class JDBCIndexTaskTest
     SegmentDescriptor desc2 = SD(task1, "2011/P1D", 0);
     Assert.assertEquals(ImmutableSet.of(desc1, desc2), publishedDescriptors());
     Assert.assertEquals(
-        new JDBCDataSourceMetadata(table, 0),
+        new JDBCDataSourceMetadata(table, 0, 10),
         metadataStorageCoordinator.getDataSourceMetadata(DATA_SCHEMA.getDataSource())
     );
 
@@ -947,12 +917,10 @@ public class JDBCIndexTaskTest
             "druid",
             uri,
             "com.mysql.jdbc.Driver",
-            new JDBCPartitions(tableName, 0),
-            new JDBCPartitions(tableName, 10),
+            new JDBCPartitions(tableName, 0, 10),
             true,
             false,
             null,
-            false,
             "select * from " + tableName + " limit 4",
             columns
         ),
@@ -1031,12 +999,10 @@ public class JDBCIndexTaskTest
             "druid",
             uri,
             "com.mysql.jdbc.Driver",
-            new JDBCPartitions(tableName, 0),
-            new JDBCPartitions(tableName, 10),
+            new JDBCPartitions(tableName, 0, 10),
             true,
             false,
             null,
-            false,
             "select * from " + tableName + " limit 1",
             columns
         ),
@@ -1072,12 +1038,10 @@ public class JDBCIndexTaskTest
             "druid",
             uri,
             "com.mysql.jdbc.Driver",
-            new JDBCPartitions(tableName, 0),
-            new JDBCPartitions(tableName, 10),
+            new JDBCPartitions(tableName, 0, 10),
             true,
             false,
             null,
-            false,
             "select * from " + tableName + " limit 5",
             columns
         ),

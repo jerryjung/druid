@@ -303,14 +303,14 @@ public class JDBCIndexTask extends AbstractTask implements ChatHandler
       // Start up, set up initial offsets.
       final Object restoredMetadata = driver.startJob();
       if (restoredMetadata == null) {
-        nextOffsets = ioConfig.getStartPartitions().getOffset();
+        nextOffsets = ioConfig.getPartitions().getStartOffset();
       } else {
         final Map<String, Object> restoredMetadataMap = (Map) restoredMetadata;
         final JDBCPartitions restoredNextPartitions = toolbox.getObjectMapper().convertValue(
             restoredMetadataMap.get(METADATA_NEXT_PARTITIONS),
             JDBCPartitions.class
         );
-        nextOffsets = restoredNextPartitions.getOffset();
+        nextOffsets = restoredNextPartitions.getEndOffset();
 
 
         // Sanity checks.
@@ -322,20 +322,20 @@ public class JDBCIndexTask extends AbstractTask implements ChatHandler
           );
         }
 
-        if (nextOffsets != ioConfig.getStartPartitions().getOffset()) {
+        if (!nextOffsets.equals(ioConfig.getPartitions().getStartOffset())) {
           throw new ISE(
               "WTF?! Restored partitions[%s] but expected partitions[%s]",
               nextOffsets,
-              ioConfig.getStartPartitions().getOffset()
+              ioConfig.getPartitions().getStartOffset()
           );
         }
 
 
-        if (nextOffsets != ioConfig.getStartPartitions().getOffset()) {
+        if (!nextOffsets.equals(ioConfig.getPartitions().getStartOffset())) {
           throw new ISE(
               "WTF?! Restored partitions[%s] but expected partitions[%s]",
               nextOffsets,
-              ioConfig.getStartPartitions()
+              ioConfig.getPartitions().getStartOffset()
           );
         }
       }
@@ -360,8 +360,9 @@ public class JDBCIndexTask extends AbstractTask implements ChatHandler
             {
               return ImmutableMap.of(
                   METADATA_NEXT_PARTITIONS, new JDBCPartitions(
-                      ioConfig.getStartPartitions().getTable(),
-                      snapshot
+                      ioConfig.getPartitions().getTable(),
+                      snapshot,
+                      snapshot + snapshot - ioConfig.getPartitions().getStartOffset()
                   )
               );
 
@@ -380,7 +381,7 @@ public class JDBCIndexTask extends AbstractTask implements ChatHandler
       try {
         Integer assignment = nextOffsets;
         boolean stillReading = !assignment.equals(0);
-        final String query = (ioConfig.getQuery() != null) ? ioConfig.getQuery() : makeQuery(ioConfig.getColumns());
+        final String query = (ioConfig.getQuery() != null) ? ioConfig.getQuery() : makeQuery(ioConfig.getColumns(), ioConfig.getPartitions());
         org.skife.jdbi.v2.Query<Map<String, Object>> dbiQuery = handle.createQuery(query);
 
         final ResultIterator<InputRow> rowIterator = dbiQuery.map(
@@ -547,8 +548,8 @@ public class JDBCIndexTask extends AbstractTask implements ChatHandler
         if (ioConfig.isUseTransaction()) {
           action = new SegmentTransactionalInsertAction(
               segments,
-              new JDBCDataSourceMetadata(ioConfig.getTableName(), ioConfig.getStartPartitions().getOffset()),
-              new JDBCDataSourceMetadata(ioConfig.getTableName(), endOffsets)
+              new JDBCDataSourceMetadata(ioConfig.getTableName(), ioConfig.getPartitions().getStartOffset(), ioConfig.getPartitions().getEndOffset()),
+              new JDBCDataSourceMetadata(ioConfig.getTableName(), endOffsets, endOffsets + endOffsets - ioConfig.getPartitions().getStartOffset())
           );
         } else {
           action = new SegmentTransactionalInsertAction(segments, null, null);
@@ -984,7 +985,7 @@ public class JDBCIndexTask extends AbstractTask implements ChatHandler
     return false;
   }
 
-  private String makeQuery(List<String> requiredFields)
+  private String makeQuery(List<String> requiredFields, JDBCPartitions partition)
   {
     if (requiredFields == null) {
       return new StringBuilder("SELECT *  FROM ").append(ioConfig.getTableName()).toString();
@@ -992,6 +993,8 @@ public class JDBCIndexTask extends AbstractTask implements ChatHandler
     return new StringBuilder("SELECT ").append(StringUtils.join(requiredFields, ','))
                                        .append(" from ")
                                        .append(ioConfig.getTableName())
+                                       .append(" where ")
+                                       .append(" id >="+partition.getStartOffset() +" and id<="+partition.getEndOffset())
                                        .toString();
   }
 

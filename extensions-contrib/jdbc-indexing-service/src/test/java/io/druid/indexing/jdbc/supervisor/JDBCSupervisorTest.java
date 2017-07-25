@@ -199,7 +199,7 @@ public class JDBCSupervisorTest extends EasyMockSupport
   @Test
   public void testNoInitialState() throws Exception
   {
-    supervisor = getSupervisor(1, 1, true, "PT1H", null, false);
+    supervisor = getSupervisor(1, 1, "PT1H", null);
 
     Capture<JDBCIndexTask> captured = Capture.newInstance();
     expect(taskMaster.getTaskQueue()).andReturn(Optional.of(taskQueue)).anyTimes();
@@ -208,6 +208,7 @@ public class JDBCSupervisorTest extends EasyMockSupport
     expect(indexerMetadataStorageCoordinator.getDataSourceMetadata(DATASOURCE)).andReturn(
         new JDBCDataSourceMetadata(
             getTable(),
+            0,
             10
         )
     ).anyTimes();
@@ -228,23 +229,17 @@ public class JDBCSupervisorTest extends EasyMockSupport
     Assert.assertTrue("isUseTransaction", taskConfig.isUseTransaction());
     Assert.assertFalse("pauseAfterRead", taskConfig.isPauseAfterRead());
     Assert.assertFalse("minimumMessageTime", taskConfig.getMinimumMessageTime().isPresent());
-    Assert.assertFalse("skipOffsetGaps", taskConfig.isSkipOffsetGaps());
 
-    Assert.assertEquals(table, taskConfig.getStartPartitions().getTable());
-    Assert.assertEquals(0L, (long) taskConfig.getStartPartitions().getOffset());
-    Assert.assertEquals(0L, (long) taskConfig.getStartPartitions().getOffset());
-    Assert.assertEquals(0L, (long) taskConfig.getStartPartitions().getOffset());
+    Assert.assertEquals(table, taskConfig.getPartitions().getTable());
+    Assert.assertEquals(0L, (long) taskConfig.getPartitions().getStartOffset());
+    Assert.assertEquals(10L, (long) taskConfig.getPartitions().getEndOffset());
 
-    Assert.assertEquals(table, taskConfig.getEndPartitions().getTable());
-//    Assert.assertEquals(Long.MAX_VALUE, (long) taskConfig.getEndPartitions().getOffset());
-//    Assert.assertEquals(Long.MAX_VALUE, (long) taskConfig.getEndPartitions().getOffset());
-//    Assert.assertEquals(Long.MAX_VALUE, (long) taskConfig.getEndPartitions().getOffset());
   }
 
   @Test
   public void testSkipOffsetGaps() throws Exception
   {
-    supervisor = getSupervisor(1, 1, true, "PT1H", null, true);
+    supervisor = getSupervisor(1, 1, "PT1H", null);
 
     Capture<JDBCIndexTask> captured = Capture.newInstance();
     expect(taskMaster.getTaskQueue()).andReturn(Optional.of(taskQueue)).anyTimes();
@@ -252,6 +247,7 @@ public class JDBCSupervisorTest extends EasyMockSupport
     expect(taskStorage.getActiveTasks()).andReturn(ImmutableList.<Task>of()).anyTimes();
     expect(indexerMetadataStorageCoordinator.getDataSourceMetadata(DATASOURCE)).andReturn(
         new JDBCDataSourceMetadata(
+            null,
             null,
             null
         )
@@ -267,13 +263,12 @@ public class JDBCSupervisorTest extends EasyMockSupport
     JDBCIndexTask task = captured.getValue();
     JDBCIOConfig taskConfig = task.getIOConfig();
 
-    Assert.assertTrue("skipOffsetGaps", taskConfig.isSkipOffsetGaps());
   }
 
   @Test
   public void testMultiTask() throws Exception
   {
-    supervisor = getSupervisor(1, 2, true, "PT1H", null, false);
+    supervisor = getSupervisor(1, 2, "PT1H", null);
 
     Capture<JDBCIndexTask> captured = Capture.newInstance(CaptureType.ALL);
     expect(taskMaster.getTaskQueue()).andReturn(Optional.of(taskQueue)).anyTimes();
@@ -281,6 +276,7 @@ public class JDBCSupervisorTest extends EasyMockSupport
     expect(taskStorage.getActiveTasks()).andReturn(ImmutableList.<Task>of()).anyTimes();
     expect(indexerMetadataStorageCoordinator.getDataSourceMetadata(DATASOURCE)).andReturn(
         new JDBCDataSourceMetadata(
+            null,
             null,
             null
         )
@@ -293,24 +289,24 @@ public class JDBCSupervisorTest extends EasyMockSupport
     verifyAll();
 
     JDBCIndexTask task1 = captured.getValues().get(0);
-    Assert.assertEquals(2, task1.getIOConfig().getStartPartitions().getOffset().intValue());
-    Assert.assertEquals(2, task1.getIOConfig().getEndPartitions().getOffset().intValue());
-    Assert.assertEquals(0L, (long) task1.getIOConfig().getStartPartitions().getOffset());
-    Assert.assertEquals(Long.MAX_VALUE, (long) task1.getIOConfig().getEndPartitions().getOffset());
-    Assert.assertEquals(0L, (long) task1.getIOConfig().getStartPartitions().getOffset());
-    Assert.assertEquals(Long.MAX_VALUE, (long) task1.getIOConfig().getEndPartitions().getOffset());
+    Assert.assertEquals(2, task1.getIOConfig().getPartitions().getStartOffset().intValue());
+    Assert.assertEquals(2, task1.getIOConfig().getPartitions().getStartOffset().intValue());
+    Assert.assertEquals(0L, (long) task1.getIOConfig().getPartitions().getStartOffset());
+    Assert.assertEquals(Long.MAX_VALUE, (long) task1.getIOConfig().getPartitions().getEndOffset());
+    Assert.assertEquals(0L, (long) task1.getIOConfig().getPartitions().getStartOffset());
+    Assert.assertEquals(Long.MAX_VALUE, (long) task1.getIOConfig().getPartitions().getEndOffset());
 
     JDBCIndexTask task2 = captured.getValues().get(1);
-    Assert.assertEquals(1, task2.getIOConfig().getStartPartitions().getOffset().intValue());
-    Assert.assertEquals(1, task2.getIOConfig().getEndPartitions().getOffset().intValue());
-    Assert.assertEquals(0L, (long) task2.getIOConfig().getStartPartitions().getOffset());
-    Assert.assertEquals(Long.MAX_VALUE, (long) task2.getIOConfig().getEndPartitions().getOffset().intValue());
+    Assert.assertEquals(1, task2.getIOConfig().getPartitions().getStartOffset().intValue());
+    Assert.assertEquals(1, task2.getIOConfig().getPartitions().getStartOffset().intValue());
+    Assert.assertEquals(0L, (long) task2.getIOConfig().getPartitions().getStartOffset());
+    Assert.assertEquals(Long.MAX_VALUE, (long) task2.getIOConfig().getPartitions().getStartOffset().intValue());
   }
 
   @Test
   public void testReplicas() throws Exception
   {
-    supervisor = getSupervisor(2, 1, true, "PT1H", null, false);
+    supervisor = getSupervisor(2, 1,"PT1H", null);
 
     Capture<JDBCIndexTask> captured = Capture.newInstance(CaptureType.ALL);
     expect(taskMaster.getTaskQueue()).andReturn(Optional.of(taskQueue)).anyTimes();
@@ -318,6 +314,7 @@ public class JDBCSupervisorTest extends EasyMockSupport
     expect(taskStorage.getActiveTasks()).andReturn(ImmutableList.<Task>of()).anyTimes();
     expect(indexerMetadataStorageCoordinator.getDataSourceMetadata(DATASOURCE)).andReturn(
         new JDBCDataSourceMetadata(
+            null,
             null,
             null
         )
@@ -330,18 +327,18 @@ public class JDBCSupervisorTest extends EasyMockSupport
     verifyAll();
 
     JDBCIndexTask task1 = captured.getValues().get(0);
-    Assert.assertEquals(0, task1.getIOConfig().getStartPartitions().getOffset().intValue());
-    Assert.assertEquals(0, task1.getIOConfig().getEndPartitions().getOffset().intValue());
+    Assert.assertEquals(0, task1.getIOConfig().getPartitions().getStartOffset().intValue());
+    Assert.assertEquals(0, task1.getIOConfig().getPartitions().getEndOffset().intValue());
 
     JDBCIndexTask task2 = captured.getValues().get(1);
-    Assert.assertEquals(0, task2.getIOConfig().getStartPartitions().getOffset().intValue());
-    Assert.assertEquals(0, task2.getIOConfig().getEndPartitions().getOffset().intValue());
+    Assert.assertEquals(0, task2.getIOConfig().getPartitions().getStartOffset().intValue());
+    Assert.assertEquals(0, task2.getIOConfig().getPartitions().getEndOffset().intValue());
   }
 
   @Test
   public void testLateMessageRejectionPeriod() throws Exception
   {
-    supervisor = getSupervisor(2, 1, true, "PT1H", new Period("PT1H"), false);
+    supervisor = getSupervisor(2, 1, "PT1H", null);
 
     Capture<JDBCIndexTask> captured = Capture.newInstance(CaptureType.ALL);
     expect(taskMaster.getTaskQueue()).andReturn(Optional.of(taskQueue)).anyTimes();
@@ -349,6 +346,7 @@ public class JDBCSupervisorTest extends EasyMockSupport
     expect(taskStorage.getActiveTasks()).andReturn(ImmutableList.<Task>of()).anyTimes();
     expect(indexerMetadataStorageCoordinator.getDataSourceMetadata(DATASOURCE)).andReturn(
         new JDBCDataSourceMetadata(
+            null,
             null,
             null
         )
@@ -383,7 +381,7 @@ public class JDBCSupervisorTest extends EasyMockSupport
    */
   public void testLatestOffset() throws Exception
   {
-    supervisor = getSupervisor(1, 1, false, "PT1H", null, false);
+    supervisor = getSupervisor(1, 1, "PT1H", null);
 
     Capture<JDBCIndexTask> captured = Capture.newInstance();
     expect(taskMaster.getTaskQueue()).andReturn(Optional.of(taskQueue)).anyTimes();
@@ -391,6 +389,7 @@ public class JDBCSupervisorTest extends EasyMockSupport
     expect(taskStorage.getActiveTasks()).andReturn(ImmutableList.<Task>of()).anyTimes();
     expect(indexerMetadataStorageCoordinator.getDataSourceMetadata(DATASOURCE)).andReturn(
         new JDBCDataSourceMetadata(
+            null,
             null,
             null
         )
@@ -403,9 +402,9 @@ public class JDBCSupervisorTest extends EasyMockSupport
     verifyAll();
 
     JDBCIndexTask task = captured.getValue();
-    Assert.assertEquals(1100L, (long) task.getIOConfig().getStartPartitions().getOffset().intValue());
-    Assert.assertEquals(1100L, (long) task.getIOConfig().getStartPartitions().getOffset().intValue());
-    Assert.assertEquals(1100L, (long) task.getIOConfig().getStartPartitions().getOffset().intValue());
+    Assert.assertEquals(1100L, (long) task.getIOConfig().getPartitions().getStartOffset().intValue());
+    Assert.assertEquals(1100L, (long) task.getIOConfig().getPartitions().getStartOffset().intValue());
+    Assert.assertEquals(1100L, (long) task.getIOConfig().getPartitions().getEndOffset().intValue());
   }
 
   @Test
@@ -415,14 +414,14 @@ public class JDBCSupervisorTest extends EasyMockSupport
    */
   public void testDatasourceMetadata() throws Exception
   {
-    supervisor = getSupervisor(1, 1, true, "PT1H", null, false);
+    supervisor = getSupervisor(1, 1, "PT1H", null);
 
     Capture<JDBCIndexTask> captured = Capture.newInstance();
     expect(taskMaster.getTaskQueue()).andReturn(Optional.of(taskQueue)).anyTimes();
     expect(taskMaster.getTaskRunner()).andReturn(Optional.<TaskRunner>absent()).anyTimes();
     expect(taskStorage.getActiveTasks()).andReturn(ImmutableList.<Task>of()).anyTimes();
     expect(indexerMetadataStorageCoordinator.getDataSourceMetadata(DATASOURCE)).andReturn(
-        new JDBCDataSourceMetadata(table, 10)
+        new JDBCDataSourceMetadata(table, 0, 10)
     ).anyTimes();
     expect(taskQueue.add(capture(captured))).andReturn(true);
     replayAll();
@@ -434,18 +433,18 @@ public class JDBCSupervisorTest extends EasyMockSupport
     JDBCIndexTask task = captured.getValue();
     JDBCIOConfig taskConfig = task.getIOConfig();
     Assert.assertEquals("sequenceName-0", taskConfig.getBaseSequenceName());
-    Assert.assertEquals(0, (long) taskConfig.getStartPartitions().getOffset().intValue());
+    Assert.assertEquals(0, (long) taskConfig.getPartitions().getStartOffset().intValue());
   }
 
   @Test(expected = ISE.class)
   public void testBadMetadataOffsets() throws Exception
   {
-    supervisor = getSupervisor(1, 1, true, "PT1H", null, false);
+    supervisor = getSupervisor(1, 1, "PT1H", null);
 
     expect(taskMaster.getTaskRunner()).andReturn(Optional.<TaskRunner>absent()).anyTimes();
     expect(taskStorage.getActiveTasks()).andReturn(ImmutableList.<Task>of()).anyTimes();
     expect(indexerMetadataStorageCoordinator.getDataSourceMetadata(DATASOURCE)).andReturn(
-        new JDBCDataSourceMetadata(table, 10)
+        new JDBCDataSourceMetadata(table, 0, 10)
     ).anyTimes();
     replayAll();
 
@@ -456,13 +455,12 @@ public class JDBCSupervisorTest extends EasyMockSupport
   @Test
   public void testKillIncompatibleTasks() throws Exception
   {
-    supervisor = getSupervisor(2, 1, true, "PT1H", null, false);
+    supervisor = getSupervisor(2, 1, "PT1H", null);
     Task id1 = createJDBCIndexTask( // unexpected # of partitions (kill)
                                     "id1",
                                     DATASOURCE,
                                     "index_jdbc_testDS__some_other_sequenceName",
-                                    new JDBCPartitions(table, 0),
-                                    new JDBCPartitions(table, 10),
+                                    new JDBCPartitions(table, 0, 10),
                                     null
     );
 
@@ -470,8 +468,7 @@ public class JDBCSupervisorTest extends EasyMockSupport
                                     "id2",
                                     DATASOURCE,
                                     "sequenceName-0",
-                                    new JDBCPartitions(table, 0),
-                                    new JDBCPartitions(table, 10),
+                                    new JDBCPartitions(table, 0, 10),
                                     null
     );
 
@@ -479,8 +476,7 @@ public class JDBCSupervisorTest extends EasyMockSupport
                                     "id3",
                                     DATASOURCE,
                                     "index_jdbc_testDS__some_other_sequenceName",
-                                    new JDBCPartitions(table, 0),
-                                    new JDBCPartitions(table, 10),
+                                    new JDBCPartitions(table, 0, 10),
                                     null
     );
 
@@ -488,8 +484,7 @@ public class JDBCSupervisorTest extends EasyMockSupport
                                     "id4",
                                     "other-datasource",
                                     "index_jdbc_testDS_d927edff33c4b3f",
-                                    new JDBCPartitions(table, 0),
-                                    new JDBCPartitions(table, 10),
+                                    new JDBCPartitions(table, 0, 10),
                                     null
     );
 
@@ -522,6 +517,7 @@ public class JDBCSupervisorTest extends EasyMockSupport
     expect(indexerMetadataStorageCoordinator.getDataSourceMetadata(DATASOURCE)).andReturn(
         new JDBCDataSourceMetadata(
             table,
+            0,
             10
         )
     ).anyTimes();
@@ -540,46 +536,41 @@ public class JDBCSupervisorTest extends EasyMockSupport
   @Test
   public void testKillBadPartitionAssignment() throws Exception
   {
-    supervisor = getSupervisor(1, 2, true, "PT1H", null, false);
+    supervisor = getSupervisor(1, 2, "PT1H", null);
 
     Task id1 = createJDBCIndexTask(
         "id1",
         DATASOURCE,
         "sequenceName-0",
-        new JDBCPartitions(table, 0),
-        new JDBCPartitions(table, 10),
+        new JDBCPartitions(table, 0, 10),
         null
     );
     Task id2 = createJDBCIndexTask(
         "id2",
         DATASOURCE,
         "sequenceName-1",
-        new JDBCPartitions(table, 0),
-        new JDBCPartitions(table, 10),
+        new JDBCPartitions(table, 0, 10),
         null
     );
     Task id3 = createJDBCIndexTask(
         "id3",
         DATASOURCE,
         "sequenceName-0",
-        new JDBCPartitions(table, 0),
-        new JDBCPartitions(table, 10),
+        new JDBCPartitions(table, 0, 10),
         null
     );
     Task id4 = createJDBCIndexTask(
         "id4",
         DATASOURCE,
         "sequenceName-0",
-        new JDBCPartitions(table, 0),
-        new JDBCPartitions(table, 10),
+        new JDBCPartitions(table, 0, 10),
         null
     );
     Task id5 = createJDBCIndexTask(
         "id5",
         DATASOURCE,
         "sequenceName-0",
-        new JDBCPartitions(table, 0),
-        new JDBCPartitions(table, 10),
+        new JDBCPartitions(table, 0, 10),
         null
     );
 
@@ -605,6 +596,7 @@ public class JDBCSupervisorTest extends EasyMockSupport
     expect(indexerMetadataStorageCoordinator.getDataSourceMetadata(DATASOURCE)).andReturn(
         new JDBCDataSourceMetadata(
             table,
+            0,
             10
         )
     ).anyTimes();
@@ -624,7 +616,7 @@ public class JDBCSupervisorTest extends EasyMockSupport
   @Test
   public void testRequeueTaskWhenFailed() throws Exception
   {
-    supervisor = getSupervisor(2, 2, true, "PT1H", null, false);
+    supervisor = getSupervisor(2, 2, "PT1H", null);
     Capture<Task> captured = Capture.newInstance(CaptureType.ALL);
     expect(taskMaster.getTaskQueue()).andReturn(Optional.of(taskQueue)).anyTimes();
     expect(taskMaster.getTaskRunner()).andReturn(Optional.of(taskRunner)).anyTimes();
@@ -636,6 +628,7 @@ public class JDBCSupervisorTest extends EasyMockSupport
     expect(indexerMetadataStorageCoordinator.getDataSourceMetadata(DATASOURCE)).andReturn(
         new JDBCDataSourceMetadata(
             table,
+            0,
             10
         )
     ).anyTimes();
@@ -692,15 +685,14 @@ public class JDBCSupervisorTest extends EasyMockSupport
   @Test
   public void testRequeueAdoptedTaskWhenFailed() throws Exception
   {
-    supervisor = getSupervisor(2, 1, true, "PT1H", null, false);
+    supervisor = getSupervisor(2, 1, "PT1H", null);
 
     DateTime now = DateTime.now();
     Task id1 = createJDBCIndexTask(
         "id1",
         DATASOURCE,
         "sequenceName-0",
-        new JDBCPartitions(table, 0),
-        new JDBCPartitions(table, 10),
+        new JDBCPartitions(table, 0, 10),
         now
     );
 
@@ -719,6 +711,7 @@ public class JDBCSupervisorTest extends EasyMockSupport
     expect(indexerMetadataStorageCoordinator.getDataSourceMetadata(DATASOURCE)).andReturn(
         new JDBCDataSourceMetadata(
             table,
+            0,
             10
         )
     ).anyTimes();
@@ -768,7 +761,7 @@ public class JDBCSupervisorTest extends EasyMockSupport
   @Test
   public void testQueueNextTasksOnSuccess() throws Exception
   {
-    supervisor = getSupervisor(2, 2, true, "PT1H", null, false);
+    supervisor = getSupervisor(2, 2, "PT1H", null);
 
     Capture<Task> captured = Capture.newInstance(CaptureType.ALL);
     expect(taskMaster.getTaskQueue()).andReturn(Optional.of(taskQueue)).anyTimes();
@@ -781,6 +774,7 @@ public class JDBCSupervisorTest extends EasyMockSupport
     expect(indexerMetadataStorageCoordinator.getDataSourceMetadata(DATASOURCE)).andReturn(
         new JDBCDataSourceMetadata(
             table,
+            0,
             10
         )
     ).anyTimes();
@@ -839,7 +833,7 @@ public class JDBCSupervisorTest extends EasyMockSupport
   {
     final TaskLocation location = new TaskLocation("testHost", 1234);
 
-    supervisor = getSupervisor(2, 2, true, "PT1M", null, false);
+    supervisor = getSupervisor(2, 2,"PT1M", null);
 
     Capture<Task> captured = Capture.newInstance(CaptureType.ALL);
     expect(taskMaster.getTaskQueue()).andReturn(Optional.of(taskQueue)).anyTimes();
@@ -849,6 +843,7 @@ public class JDBCSupervisorTest extends EasyMockSupport
     expect(indexerMetadataStorageCoordinator.getDataSourceMetadata(DATASOURCE)).andReturn(
         new JDBCDataSourceMetadata(
             table,
+            0,
             10
         )
     ).anyTimes();
@@ -910,10 +905,10 @@ public class JDBCSupervisorTest extends EasyMockSupport
       Assert.assertTrue("isUseTransaction", taskConfig.isUseTransaction());
       Assert.assertFalse("pauseAfterRead", taskConfig.isPauseAfterRead());
 
-      Assert.assertEquals(table, taskConfig.getStartPartitions().getTable());
-      Assert.assertEquals(10L, (long) taskConfig.getStartPartitions().getOffset());
-      Assert.assertEquals(20L, (long) taskConfig.getStartPartitions().getOffset());
-      Assert.assertEquals(35L, (long) taskConfig.getStartPartitions().getOffset());
+      Assert.assertEquals(table, taskConfig.getPartitions().getTable());
+      Assert.assertEquals(10L, (long) taskConfig.getPartitions().getStartOffset());
+      Assert.assertEquals(20L, (long) taskConfig.getPartitions().getStartOffset());
+      Assert.assertEquals(35L, (long) taskConfig.getPartitions().getEndOffset());
     }
   }
 
@@ -922,14 +917,13 @@ public class JDBCSupervisorTest extends EasyMockSupport
   {
     final TaskLocation location = new TaskLocation("testHost", 1234);
 
-    supervisor = getSupervisor(1, 1, true, "PT1H", null, false);
+    supervisor = getSupervisor(1, 1, "PT1H", null);
 
     Task task = createJDBCIndexTask(
         "id1",
         DATASOURCE,
         "sequenceName-0",
-        new JDBCPartitions(table, 0),
-        new JDBCPartitions(table, 10),
+        new JDBCPartitions(table, 0, 10),
         null
     );
 
@@ -946,6 +940,7 @@ public class JDBCSupervisorTest extends EasyMockSupport
     expect(indexerMetadataStorageCoordinator.getDataSourceMetadata(DATASOURCE)).andReturn(
         new JDBCDataSourceMetadata(
             table,
+            0,
             10
         )
     ).anyTimes();
@@ -993,15 +988,15 @@ public class JDBCSupervisorTest extends EasyMockSupport
     Assert.assertFalse("pauseAfterRead", capturedTaskConfig.isPauseAfterRead());
 
     // check that the new task was created with starting offsets matching where the publishing task finished
-    Assert.assertEquals(table, capturedTaskConfig.getStartPartitions().getTable());
-    Assert.assertEquals(10L, (long) capturedTaskConfig.getStartPartitions().getOffset());
-    Assert.assertEquals(20L, (long) capturedTaskConfig.getStartPartitions().getOffset());
-    Assert.assertEquals(30L, (long) capturedTaskConfig.getStartPartitions().getOffset());
+    Assert.assertEquals(table, capturedTaskConfig.getPartitions().getTable());
+    Assert.assertEquals(10L, (long) capturedTaskConfig.getPartitions().getStartOffset());
+    Assert.assertEquals(20L, (long) capturedTaskConfig.getPartitions().getStartOffset());
+    Assert.assertEquals(30L, (long) capturedTaskConfig.getPartitions().getEndOffset());
 
-    Assert.assertEquals(table, capturedTaskConfig.getEndPartitions().getTable());
-    Assert.assertEquals(Long.MAX_VALUE, (long) capturedTaskConfig.getEndPartitions().getOffset());
-    Assert.assertEquals(Long.MAX_VALUE, (long) capturedTaskConfig.getEndPartitions().getOffset());
-    Assert.assertEquals(Long.MAX_VALUE, (long) capturedTaskConfig.getEndPartitions().getOffset());
+    Assert.assertEquals(table, capturedTaskConfig.getPartitions().getTable());
+    Assert.assertEquals(Long.MAX_VALUE, (long) capturedTaskConfig.getPartitions().getEndOffset());
+    Assert.assertEquals(Long.MAX_VALUE, (long) capturedTaskConfig.getPartitions().getEndOffset());
+    Assert.assertEquals(Long.MAX_VALUE, (long) capturedTaskConfig.getPartitions().getEndOffset());
   }
 
   @Test
@@ -1009,14 +1004,13 @@ public class JDBCSupervisorTest extends EasyMockSupport
   {
     final TaskLocation location = new TaskLocation("testHost", 1234);
 
-    supervisor = getSupervisor(1, 1, true, "PT1H", null, false);
+    supervisor = getSupervisor(1, 1,"PT1H", null);
 
     Task task = createJDBCIndexTask(
         "id1",
         DATASOURCE,
         "sequenceName-0",
-        new JDBCPartitions(table, 0),
-        new JDBCPartitions(table, 10),
+        new JDBCPartitions(table, 0, 10),
         null
     );
 
@@ -1033,6 +1027,7 @@ public class JDBCSupervisorTest extends EasyMockSupport
     expect(indexerMetadataStorageCoordinator.getDataSourceMetadata(DATASOURCE)).andReturn(
         new JDBCDataSourceMetadata(
             table,
+            0,
             10
         )
     ).anyTimes();
@@ -1080,15 +1075,15 @@ public class JDBCSupervisorTest extends EasyMockSupport
     Assert.assertFalse("pauseAfterRead", capturedTaskConfig.isPauseAfterRead());
 
     // check that the new task was created with starting offsets matching where the publishing task finished
-    Assert.assertEquals(table, capturedTaskConfig.getStartPartitions().getTable());
-    Assert.assertEquals(10L, (long) capturedTaskConfig.getStartPartitions().getOffset());
-    Assert.assertEquals(0L, (long) capturedTaskConfig.getStartPartitions().getOffset());
-    Assert.assertEquals(30L, (long) capturedTaskConfig.getStartPartitions().getOffset());
+    Assert.assertEquals(table, capturedTaskConfig.getPartitions().getTable());
+    Assert.assertEquals(10L, (long) capturedTaskConfig.getPartitions().getStartOffset());
+    Assert.assertEquals(0L, (long) capturedTaskConfig.getPartitions().getStartOffset());
+    Assert.assertEquals(30L, (long) capturedTaskConfig.getPartitions().getEndOffset());
 
-    Assert.assertEquals(table, capturedTaskConfig.getEndPartitions().getTable());
-    Assert.assertEquals(Long.MAX_VALUE, (long) capturedTaskConfig.getEndPartitions().getOffset());
-    Assert.assertEquals(Long.MAX_VALUE, (long) capturedTaskConfig.getEndPartitions().getOffset());
-    Assert.assertEquals(Long.MAX_VALUE, (long) capturedTaskConfig.getEndPartitions().getOffset());
+    Assert.assertEquals(table, capturedTaskConfig.getPartitions().getTable());
+    Assert.assertEquals(Long.MAX_VALUE, (long) capturedTaskConfig.getPartitions().getEndOffset());
+    Assert.assertEquals(Long.MAX_VALUE, (long) capturedTaskConfig.getPartitions().getEndOffset());
+    Assert.assertEquals(Long.MAX_VALUE, (long) capturedTaskConfig.getPartitions().getEndOffset());
   }
 
   @Test
@@ -1098,14 +1093,13 @@ public class JDBCSupervisorTest extends EasyMockSupport
     final TaskLocation location2 = new TaskLocation("testHost2", 145);
     final DateTime startTime = new DateTime();
 
-    supervisor = getSupervisor(1, 1, true, "PT1H", null, false);
+    supervisor = getSupervisor(1, 1, "PT1H", null);
 
     Task id1 = createJDBCIndexTask(
         "id1",
         DATASOURCE,
         "sequenceName-0",
-        new JDBCPartitions(table, 0),
-        new JDBCPartitions(table, 10),
+        new JDBCPartitions(table, 0, 10),
         null
     );
 
@@ -1113,8 +1107,7 @@ public class JDBCSupervisorTest extends EasyMockSupport
         "id2",
         DATASOURCE,
         "sequenceName-0",
-        new JDBCPartitions(table, 0),
-        new JDBCPartitions(table, 10),
+        new JDBCPartitions(table, 0, 10),
         null
     );
 
@@ -1133,6 +1126,7 @@ public class JDBCSupervisorTest extends EasyMockSupport
     expect(indexerMetadataStorageCoordinator.getDataSourceMetadata(DATASOURCE)).andReturn(
         new JDBCDataSourceMetadata(
             table,
+            0,
             10
         )
     ).anyTimes();
@@ -1190,7 +1184,7 @@ public class JDBCSupervisorTest extends EasyMockSupport
   @Test
   public void testKillUnresponsiveTasksWhileGettingStartTime() throws Exception
   {
-    supervisor = getSupervisor(2, 2, true, "PT1H", null, false);
+    supervisor = getSupervisor(2, 2, "PT1H", null);
 
     Capture<Task> captured = Capture.newInstance(CaptureType.ALL);
     expect(taskMaster.getTaskQueue()).andReturn(Optional.of(taskQueue)).anyTimes();
@@ -1200,6 +1194,7 @@ public class JDBCSupervisorTest extends EasyMockSupport
     expect(indexerMetadataStorageCoordinator.getDataSourceMetadata(DATASOURCE)).andReturn(
         new JDBCDataSourceMetadata(
             table,
+            0,
             10
         )
     ).anyTimes();
@@ -1235,7 +1230,7 @@ public class JDBCSupervisorTest extends EasyMockSupport
   {
     final TaskLocation location = new TaskLocation("testHost", 1234);
 
-    supervisor = getSupervisor(2, 2, true, "PT1M", null, false);
+    supervisor = getSupervisor(2, 2, "PT1M", null);
 
     Capture<Task> captured = Capture.newInstance(CaptureType.ALL);
     expect(taskMaster.getTaskQueue()).andReturn(Optional.of(taskQueue)).anyTimes();
@@ -1245,6 +1240,7 @@ public class JDBCSupervisorTest extends EasyMockSupport
     expect(indexerMetadataStorageCoordinator.getDataSourceMetadata(DATASOURCE)).andReturn(
         new JDBCDataSourceMetadata(
             table,
+            0,
             10
         )
     ).anyTimes();
@@ -1292,8 +1288,8 @@ public class JDBCSupervisorTest extends EasyMockSupport
 
     for (Task task : captured.getValues()) {
       JDBCIOConfig taskConfig = ((JDBCIndexTask) task).getIOConfig();
-      Assert.assertEquals(0L, (long) taskConfig.getStartPartitions().getOffset());
-      Assert.assertEquals(0L, (long) taskConfig.getStartPartitions().getOffset());
+      Assert.assertEquals(0L, (long) taskConfig.getPartitions().getStartOffset());
+      Assert.assertEquals(0L, (long) taskConfig.getPartitions().getEndOffset());
     }
   }
 
@@ -1302,7 +1298,7 @@ public class JDBCSupervisorTest extends EasyMockSupport
   {
     final TaskLocation location = new TaskLocation("testHost", 1234);
 
-    supervisor = getSupervisor(2, 1, true, "PT1M", null, false);
+    supervisor = getSupervisor(2, 1, "PT1M", null);
 
     Capture<Task> captured = Capture.newInstance(CaptureType.ALL);
     expect(taskMaster.getTaskQueue()).andReturn(Optional.of(taskQueue)).anyTimes();
@@ -1312,6 +1308,7 @@ public class JDBCSupervisorTest extends EasyMockSupport
     expect(indexerMetadataStorageCoordinator.getDataSourceMetadata(DATASOURCE)).andReturn(
         new JDBCDataSourceMetadata(
             table,
+            0,
             10
         )
     ).anyTimes();
@@ -1367,15 +1364,15 @@ public class JDBCSupervisorTest extends EasyMockSupport
 
     for (Task task : captured.getValues()) {
       JDBCIOConfig taskConfig = ((JDBCIndexTask) task).getIOConfig();
-      Assert.assertEquals(0L, (long) taskConfig.getStartPartitions().getOffset());
-      Assert.assertEquals(0L, (long) taskConfig.getStartPartitions().getOffset());
+      Assert.assertEquals(0L, (long) taskConfig.getPartitions().getStartOffset());
+      Assert.assertEquals(0L, (long) taskConfig.getPartitions().getEndOffset());
     }
   }
 
   @Test(expected = IllegalStateException.class)
   public void testStopNotStarted() throws Exception
   {
-    supervisor = getSupervisor(1, 1, true, "PT1H", null, false);
+    supervisor = getSupervisor(1, 1, "PT1H", null);
     supervisor.stop(false);
   }
 
@@ -1387,7 +1384,7 @@ public class JDBCSupervisorTest extends EasyMockSupport
     taskRunner.unregisterListener(String.format("JDBCSupervisor-%s", DATASOURCE));
     replayAll();
 
-    supervisor = getSupervisor(1, 1, true, "PT1H", null, false);
+    supervisor = getSupervisor(1, 1, "PT1H", null);
     supervisor.start();
     supervisor.stop(false);
 
@@ -1401,14 +1398,13 @@ public class JDBCSupervisorTest extends EasyMockSupport
     final TaskLocation location2 = new TaskLocation("testHost2", 145);
     final DateTime startTime = new DateTime();
 
-    supervisor = getSupervisor(2, 1, true, "PT1H", null, false);
+    supervisor = getSupervisor(2, 1, "PT1H", null);
 
     Task id1 = createJDBCIndexTask(
         "id1",
         DATASOURCE,
         "sequenceName-0",
-        new JDBCPartitions(table, 0),
-        new JDBCPartitions(table, 10),
+        new JDBCPartitions(table, 0, 10),
         null
     );
 
@@ -1416,8 +1412,7 @@ public class JDBCSupervisorTest extends EasyMockSupport
         "id2",
         DATASOURCE,
         "sequenceName-0",
-        new JDBCPartitions(table, 0),
-        new JDBCPartitions(table, 10),
+        new JDBCPartitions(table, 0, 10),
         null
     );
 
@@ -1425,8 +1420,7 @@ public class JDBCSupervisorTest extends EasyMockSupport
         "id3",
         DATASOURCE,
         "sequenceName-0",
-        new JDBCPartitions(table, 0),
-        new JDBCPartitions(table, 10),
+        new JDBCPartitions(table, 0, 10),
         null
     );
 
@@ -1447,6 +1441,7 @@ public class JDBCSupervisorTest extends EasyMockSupport
     expect(indexerMetadataStorageCoordinator.getDataSourceMetadata(DATASOURCE)).andReturn(
         new JDBCDataSourceMetadata(
             table,
+            0,
             10
         )
     ).anyTimes();
@@ -1489,7 +1484,7 @@ public class JDBCSupervisorTest extends EasyMockSupport
     taskRunner.registerListener(anyObject(TaskRunnerListener.class), anyObject(Executor.class));
     replayAll();
 
-    supervisor = getSupervisor(1, 1, true, "PT1H", null, false);
+    supervisor = getSupervisor(1, 1, "PT1H", null);
     supervisor.start();
     supervisor.runInternal();
     verifyAll();
@@ -1506,7 +1501,7 @@ public class JDBCSupervisorTest extends EasyMockSupport
   @Test
   public void testResetDataSourceMetadata() throws Exception
   {
-    supervisor = getSupervisor(1, 1, true, "PT1H", null, false);
+    supervisor = getSupervisor(1, 1, "PT1H", null);
     expect(taskMaster.getTaskQueue()).andReturn(Optional.of(taskQueue)).anyTimes();
     expect(taskMaster.getTaskRunner()).andReturn(Optional.of(taskRunner)).anyTimes();
     expect(taskRunner.getRunningTasks()).andReturn(Collections.EMPTY_LIST).anyTimes();
@@ -1523,16 +1518,19 @@ public class JDBCSupervisorTest extends EasyMockSupport
 
     JDBCDataSourceMetadata kafkaDataSourceMetadata = new JDBCDataSourceMetadata(
         table,
+        0,
         10
     );
 
     JDBCDataSourceMetadata resetMetadata = new JDBCDataSourceMetadata(
         table,
+        0,
         10
     );
 
     JDBCDataSourceMetadata expectedMetadata = new JDBCDataSourceMetadata(
         table,
+        0,
         10
     );
 
@@ -1554,7 +1552,7 @@ public class JDBCSupervisorTest extends EasyMockSupport
   @Test
   public void testResetNoDataSourceMetadata() throws Exception
   {
-    supervisor = getSupervisor(1, 1, true, "PT1H", null, false);
+    supervisor = getSupervisor(1, 1, "PT1H", null);
     expect(taskMaster.getTaskQueue()).andReturn(Optional.of(taskQueue)).anyTimes();
     expect(taskMaster.getTaskRunner()).andReturn(Optional.of(taskRunner)).anyTimes();
     expect(taskRunner.getRunningTasks()).andReturn(Collections.EMPTY_LIST).anyTimes();
@@ -1568,6 +1566,7 @@ public class JDBCSupervisorTest extends EasyMockSupport
 
     JDBCDataSourceMetadata resetMetadata = new JDBCDataSourceMetadata(
         table,
+        0,
         10
     );
 
@@ -1587,14 +1586,13 @@ public class JDBCSupervisorTest extends EasyMockSupport
     final TaskLocation location2 = new TaskLocation("testHost2", 145);
     final DateTime startTime = new DateTime();
 
-    supervisor = getSupervisor(2, 1, true, "PT1H", null, false);
+    supervisor = getSupervisor(2, 1,"PT1H", null);
 
     Task id1 = createJDBCIndexTask(
         "id1",
         DATASOURCE,
         "sequenceName-0",
-        new JDBCPartitions(table, 0),
-        new JDBCPartitions(table, 10),
+        new JDBCPartitions(table, 0, 10),
         null
     );
 
@@ -1602,8 +1600,7 @@ public class JDBCSupervisorTest extends EasyMockSupport
         "id2",
         DATASOURCE,
         "sequenceName-0",
-        new JDBCPartitions(table, 0),
-        new JDBCPartitions(table, 10),
+        new JDBCPartitions(table, 0, 10),
         null
     );
 
@@ -1611,8 +1608,7 @@ public class JDBCSupervisorTest extends EasyMockSupport
         "id3",
         DATASOURCE,
         "sequenceName-0",
-        new JDBCPartitions(table, 0),
-        new JDBCPartitions(table, 10),
+        new JDBCPartitions(table, 0, 10),
         null
     );
 
@@ -1633,6 +1629,7 @@ public class JDBCSupervisorTest extends EasyMockSupport
     expect(indexerMetadataStorageCoordinator.getDataSourceMetadata(DATASOURCE)).andReturn(
         new JDBCDataSourceMetadata(
             table,
+            0,
             10
         )
     ).anyTimes();
@@ -1664,10 +1661,8 @@ public class JDBCSupervisorTest extends EasyMockSupport
   private JDBCSupervisor getSupervisor(
       int replicas,
       int taskCount,
-      boolean useEarliestOffset,
       String duration,
-      Period lateMessageRejectionPeriod,
-      boolean skipOffsetGaps
+      Period lateMessageRejectionPeriod
   )
   {
     JDBCSupervisorIOConfig jdbcSupervisorIOConfig = new JDBCSupervisorIOConfig(
@@ -1681,11 +1676,10 @@ public class JDBCSupervisorTest extends EasyMockSupport
         new Period(duration),
         new Period("P1D"),
         new Period("PT30S"),
-        useEarliestOffset,
+        new JDBCPartitions(table, 0, 10),
         new Period("PT30M"),
         lateMessageRejectionPeriod,
-        skipOffsetGaps,
-        "select * from " + table + " limit 10",
+        null,
         Lists.newArrayList(
             "id",
             "audit_key",
@@ -1779,8 +1773,7 @@ public class JDBCSupervisorTest extends EasyMockSupport
       String id,
       String dataSource,
       String sequenceName,
-      JDBCPartitions startPartitions,
-      JDBCPartitions endPartitions,
+      JDBCPartitions partition,
       DateTime minimumMessageTime
   )
   {
@@ -1796,13 +1789,11 @@ public class JDBCSupervisorTest extends EasyMockSupport
             "druid",
             "jdbc:mysql://emn-g03-02:3306/druid",
             "com.mysql.jdbc.Driver",
-            startPartitions,
-            endPartitions,
+            partition,
             true,
             false,
             minimumMessageTime,
-            false,
-            "select * from " + table + " limit 10",
+            null,
             Lists.newArrayList(
                 "id",
                 "audit_key",

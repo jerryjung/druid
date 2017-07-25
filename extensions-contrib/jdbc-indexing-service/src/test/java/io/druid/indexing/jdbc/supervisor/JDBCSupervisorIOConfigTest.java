@@ -73,10 +73,7 @@ public class JDBCSupervisorIOConfigTest
     Assert.assertEquals(Duration.standardMinutes(60), config.getTaskDuration());
     Assert.assertEquals(Duration.standardSeconds(5), config.getStartDelay());
     Assert.assertEquals(Duration.standardSeconds(30), config.getPeriod());
-    Assert.assertEquals(false, config.isUseEarliestOffset());
     Assert.assertEquals(Duration.standardMinutes(30), config.getCompletionTimeout());
-    Assert.assertFalse("lateMessageRejectionPeriod", config.getLateMessageRejectionPeriod().isPresent());
-    Assert.assertFalse("skipOffsetGaps", config.isSkipOffsetGaps());
   }
 
   @Test
@@ -117,10 +114,7 @@ public class JDBCSupervisorIOConfigTest
     Assert.assertEquals(Duration.standardMinutes(30), config.getTaskDuration());
     Assert.assertEquals(Duration.standardMinutes(1), config.getStartDelay());
     Assert.assertEquals(Duration.standardSeconds(10), config.getPeriod());
-    Assert.assertEquals(true, config.isUseEarliestOffset());
     Assert.assertEquals(Duration.standardMinutes(45), config.getCompletionTimeout());
-    Assert.assertEquals(Duration.standardHours(1), config.getLateMessageRejectionPeriod().get());
-    Assert.assertTrue("skipOffsetGaps", config.isSkipOffsetGaps());
   }
 
   @Test

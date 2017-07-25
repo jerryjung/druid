@@ -686,7 +686,6 @@ public class JDBCSupervisor implements Supervisor
       int taskGroupId = getTaskGroupIdForPartition(partition);
 
       partitionGroups.putIfAbsent(taskGroupId, 0L);
-
       Long partitionMap = partitionGroups.get(taskGroupId);
 
       // The starting offset for a new partition in [partitionGroups] is initially set to NOT_SET; when a new task group
@@ -732,7 +731,7 @@ public class JDBCSupervisor implements Supervisor
       // state, we will permit it to complete even if it doesn't match our current partition allocation to support
       // seamless schema migration.
 
-      Integer it = jdbcTask.getIOConfig().getStartPartitions().getOffset();
+      Integer it = jdbcTask.getIOConfig().getPartitions().getStartOffset();
       final Integer taskGroupId = (it != 0 ? getTaskGroupIdForPartition(it) : null);
 
       if (taskGroupId != null) {
@@ -754,8 +753,8 @@ public class JDBCSupervisor implements Supervisor
                             taskGroupId,
                             taskId,
                             jdbcTask.getIOConfig()
-                                    .getStartPartitions()
-                                    .getOffset()
+                                    .getPartitions()
+                                    .getStartOffset()
                         );
 
                         // update partitionGroups with the publishing task's offsets (if they are greater than what is
@@ -777,8 +776,8 @@ public class JDBCSupervisor implements Supervisor
 
                       } else {
                         if (!taskGroupId.equals(getTaskGroupIdForPartition(jdbcTask.getIOConfig()
-                                                                                   .getStartPartitions()
-                                                                                   .getOffset()))) {
+                                                                                   .getPartitions()
+                                                                                   .getStartOffset()))) {
                           log.warn(
                               "Stopping task [%s] which does not match the expected partition allocation",
                               taskId
@@ -796,8 +795,8 @@ public class JDBCSupervisor implements Supervisor
                             taskGroupId,
                             new TaskGroup(
                                 jdbcTask.getIOConfig()
-                                        .getStartPartitions()
-                                        .getOffset()
+                                        .getPartitions()
+                                        .getStartOffset()
                                 , jdbcTask.getIOConfig().getMinimumMessageTime()
                             )
                         ) == null) {
@@ -1296,12 +1295,10 @@ public class JDBCSupervisor implements Supervisor
         ioConfig.getPassword(),
         ioConfig.getConnectURI(),
         ioConfig.getDriverClass(),
-        new JDBCPartitions(ioConfig.getTable(), startPartitions),
-        new JDBCPartitions(ioConfig.getTable(), endPartitions),
+        new JDBCPartitions(ioConfig.getTable(), startPartitions, endPartitions),
         true,
         false,
         minimumMessageTime,
-        ioConfig.isSkipOffsetGaps(),
         ioConfig.getQuery(),
         ioConfig.getColumns()
     );
