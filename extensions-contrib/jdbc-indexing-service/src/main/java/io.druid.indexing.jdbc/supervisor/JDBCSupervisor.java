@@ -51,7 +51,7 @@ import io.druid.indexing.jdbc.JDBCIOConfig;
 import io.druid.indexing.jdbc.JDBCIndexTask;
 import io.druid.indexing.jdbc.JDBCIndexTaskClient;
 import io.druid.indexing.jdbc.JDBCIndexTaskClientFactory;
-import io.druid.indexing.jdbc.JDBCPartitions;
+import io.druid.indexing.jdbc.JDBCOffsets;
 import io.druid.indexing.jdbc.JDBCTuningConfig;
 import io.druid.indexing.overlord.DataSourceMetadata;
 import io.druid.indexing.overlord.IndexerMetadataStorageCoordinator;
@@ -101,7 +101,6 @@ public class JDBCSupervisor implements Supervisor
   private static final EmittingLogger log = new EmittingLogger(JDBCSupervisor.class);
   private static final Random RANDOM = new Random();
   private static final long MAX_RUN_FREQUENCY_MILLIS = 1000; // prevent us from running too often in response to events
-  private static final long NOT_SET = -1;
   private static final long MINIMUM_FUTURE_TIMEOUT_IN_SECONDS = 120;
   private static final long MINIMUM_GET_OFFSET_PERIOD_MILLIS = 5000;
   private static final long INITIAL_GET_OFFSET_DELAY_MILLIS = 15000;
@@ -120,20 +119,17 @@ public class JDBCSupervisor implements Supervisor
    */
   private static class TaskGroup
   {
-    // This specifies the partitions and starting offsets for this task group. It is set on group creation from the data
-    // in [partitionGroups] and never changes during the lifetime of this task group, which will live until a task in
-    // this task group has completed successfully, at which point this will be destroyed and a new task group will be
-    // created with new starting offsets. This allows us to create replacement tasks for failed tasks that process the
-    // same offsets, even if the values in [partitionGroups] has been changed.
-    final Integer partitionOffsets;
+    final Integer startOffset;
+    final Integer endOffset;
 
     final ConcurrentHashMap<String, TaskData> tasks = new ConcurrentHashMap<>();
     final Optional<DateTime> minimumMessageTime;
     DateTime completionTimeout; // is set after signalTasksToFinish(); if not done by timeout, take corrective action
 
-    public TaskGroup(Integer partitionOffsets, Optional<DateTime> minimumMessageTime)
+    public TaskGroup(Integer startOffset, Integer endOffset, Optional<DateTime> minimumMessageTime)
     {
-      this.partitionOffsets = partitionOffsets;
+      this.startOffset = startOffset;
+      this.endOffset = endOffset;
       this.minimumMessageTime = minimumMessageTime;
     }
 
@@ -159,17 +155,7 @@ public class JDBCSupervisor implements Supervisor
   // Map<{group ID}, List<{pending completion task groups}>>
   private final ConcurrentHashMap<Integer, CopyOnWriteArrayList<TaskGroup>> pendingCompletionTaskGroups = new ConcurrentHashMap<>();
 
-  // The starting offset for a new partition in [partitionGroups] is initially set to NOT_SET. When a new task group
-  // is created and is assigned partitions, if the offset in [partitionGroups] is NOT_SET it will take the starting
-  // offset value from the metadata store, and if it can't find it there, from JDBC. Once a task begins
-  // publishing, the offset in partitionGroups will be updated to the ending offset of the publishing-but-not-yet-
-  // completed task, which will cause the next set of tasks to begin reading from where the previous task left
-  // off. If that previous task now fails, we will set the offset in [partitionGroups] back to NOT_SET which will
-  // cause successive tasks to again grab their starting offset from metadata store. This mechanism allows us to
-  // start up successive tasks without waiting for the previous tasks to succeed and still be able to handle task
-  // failures during publishing.
-  // Map<{group ID}, Map<{partition ID}, {startingOffset}>>
-  private final ConcurrentHashMap<Integer, Long> partitionGroups = new ConcurrentHashMap<>();
+  private final ConcurrentHashMap<Integer, Long> groups = new ConcurrentHashMap<>();
   // --------------------------------------------------------
 
   private final TaskStorage taskStorage;
@@ -195,7 +181,6 @@ public class JDBCSupervisor implements Supervisor
   private final BlockingQueue<Notice> notices = new LinkedBlockingDeque<>();
   private final Object stopLock = new Object();
   private final Object stateChangeLock = new Object();
-  private final Object consumerLock = new Object();
 
   private boolean listenerRegistered = false;
   private long lastRunTime;
@@ -546,7 +531,7 @@ public class JDBCSupervisor implements Supervisor
       // Reset everything
       boolean result = indexerMetadataStorageCoordinator.deleteDataSourceMetadata(dataSource);
       log.info("Reset dataSource[%s] - dataSource metadata entry deleted? [%s]", dataSource, result);
-      killTaskGroupForPartitions(taskGroups.keySet());
+      killTaskGroupForPartitions();
     } else if (!(dataSourceMetadata instanceof JDBCDataSourceMetadata)) {
       throw new IAE("Expected JDBCDataSourceMetadata but found instance of [%s]", dataSourceMetadata.getClass());
     } else {
@@ -588,20 +573,18 @@ public class JDBCSupervisor implements Supervisor
   }
 
 
-  private void killTaskGroupForPartitions(Set<Integer> partitions)
+  private void killTaskGroupForPartitions()
   {
-    for (Integer partition : partitions) {
-      TaskGroup taskGroup = taskGroups.get(getTaskGroupIdForPartition(partition));
-      if (taskGroup != null) {
-        // kill all tasks in this task group
-        for (String taskId : taskGroup.tasks.keySet()) {
-          log.info("Reset dataSource[%s] - killing task [%s]", dataSource, taskId);
-          killTask(taskId);
-        }
+    TaskGroup taskGroup = taskGroups.get(getTaskGroup());
+    if (taskGroup != null) {
+      // kill all tasks in this task group
+      for (String taskId : taskGroup.tasks.keySet()) {
+        log.info("Reset dataSource[%s] - killing task [%s]", dataSource, taskId);
+        killTask(taskId);
       }
-      partitionGroups.remove(getTaskGroupIdForPartition(partition));
-      taskGroups.remove(getTaskGroupIdForPartition(partition));
     }
+    groups.remove(getTaskGroup());
+    taskGroups.remove(getTaskGroup());
   }
 
 
@@ -629,7 +612,7 @@ public class JDBCSupervisor implements Supervisor
   void runInternal() throws ExecutionException, InterruptedException, TimeoutException
   {
     possiblyRegisterListener();
-    updatePartitionDataFromJDBC();
+    updateDataFromJDBC();
     discoverTasks();
     updateTaskStatus();
     checkTaskDuration();
@@ -648,9 +631,10 @@ public class JDBCSupervisor implements Supervisor
   String generateSequenceName(int groupId)
   {
     StringBuilder sb = new StringBuilder();
-    Integer startPartitions = taskGroups.get(groupId).partitionOffsets;
-    sb.append(String.format("+%d(%d)", startPartitions, startPartitions));
-    String partitionOffsetStr = sb.toString().substring(1);
+    Integer startOffset = taskGroups.get(groupId).startOffset;
+    Integer endOffset = taskGroups.get(groupId).endOffset;
+    sb.append(String.format("+%d(%d)", startOffset, endOffset));
+    String offsetStr = sb.toString().substring(1);
 
     Optional<DateTime> minimumMessageTime = taskGroups.get(groupId).minimumMessageTime;
     String minMsgTimeStr = (minimumMessageTime.isPresent() ? String.valueOf(minimumMessageTime.get().getMillis()) : "");
@@ -664,7 +648,7 @@ public class JDBCSupervisor implements Supervisor
       throw Throwables.propagate(e);
     }
 
-    String hashCode = DigestUtils.sha1Hex(dataSchema + tuningConfig + partitionOffsetStr + minMsgTimeStr)
+    String hashCode = DigestUtils.sha1Hex(dataSchema + tuningConfig + offsetStr + minMsgTimeStr)
                                  .substring(0, 15);
 
     return Joiner.on("_").join("index_kafka", dataSource, hashCode);
@@ -680,31 +664,28 @@ public class JDBCSupervisor implements Supervisor
   }
 
 
-  private void updatePartitionDataFromJDBC()
+  private void updateDataFromJDBC()
   {
-     for (int partition = 0; partition < 1; partition++) {
-      int taskGroupId = getTaskGroupIdForPartition(partition);
+    int taskGroupId = getTaskGroup();
 
-      partitionGroups.putIfAbsent(taskGroupId, 0L);
-      Long partitionMap = partitionGroups.get(taskGroupId);
+    groups.putIfAbsent(taskGroupId, 0L);
+    Long task = groups.get(taskGroupId);
 
-      // The starting offset for a new partition in [partitionGroups] is initially set to NOT_SET; when a new task group
-      // is created and is assigned partitions, if the offset in [partitionGroups] is NOT_SET it will take the starting
-      // offset value from the metadata store, and if it can't find it there, from Kafka. Once a task begins
-      // publishing, the offset in partitionGroups will be updated to the ending offset of the publishing-but-not-yet-
-      // completed task, which will cause the next set of tasks to begin reading from where the previous task left
-      // off. If that previous task now fails, we will set the offset in [partitionGroups] back to NOT_SET which will
-      // cause successive tasks to again grab their starting offset from metadata store. This mechanism allows us to
-      // start up successive tasks without waiting for the previous tasks to succeed and still be able to handle task
-      // failures during publishing.
-      if (partitionMap == null) {
-        log.info(
-            "New partition [%d] discovered for topic [%s], added to task group [%d]",
-            partition,
-            ioConfig.getTable(),
-            taskGroupId
-        );
-      }
+    // The starting offset for a new partition in [groups] is initially set to NOT_SET; when a new task group
+    // is created and is assigned partitions, if the offset in [groups] is NOT_SET it will take the starting
+    // offset value from the metadata store, and if it can't find it there, from Kafka. Once a task begins
+    // publishing, the offset in groups will be updated to the ending offset of the publishing-but-not-yet-
+    // completed task, which will cause the next set of tasks to begin reading from where the previous task left
+    // off. If that previous task now fails, we will set the offset in [groups] back to NOT_SET which will
+    // cause successive tasks to again grab their starting offset from metadata store. This mechanism allows us to
+    // start up successive tasks without waiting for the previous tasks to succeed and still be able to handle task
+    // failures during publishing.
+    if (task == null) {
+      log.info(
+          "New  [%d]  added to task group [%d]",
+          ioConfig.getTable(),
+          taskGroupId
+      );
     }
   }
 
@@ -726,13 +707,12 @@ public class JDBCSupervisor implements Supervisor
 
       // Determine which task group this task belongs to based on one of the partitions handled by this task. If we
       // later determine that this task is actively reading, we will make sure that it matches our current partition
-      // allocation (getTaskGroupIdForPartition(partition) should return the same value for every partition being read
+      // allocation (getTaskGroup(partition) should return the same value for every partition being read
       // by this task) and kill it if it is not compatible. If the task is instead found to be in the publishing
       // state, we will permit it to complete even if it doesn't match our current partition allocation to support
       // seamless schema migration.
 
-      Integer it = jdbcTask.getIOConfig().getPartitions().getStartOffset();
-      final Integer taskGroupId = (it != 0 ? getTaskGroupIdForPartition(it) : null);
+      final Integer taskGroupId = getTaskGroup();
 
       if (taskGroupId != null) {
         // check to see if we already know about this task, either in [taskGroups] or in [pendingCompletionTaskGroups]
@@ -754,30 +734,26 @@ public class JDBCSupervisor implements Supervisor
                             taskId,
                             jdbcTask.getIOConfig()
                                     .getPartitions()
-                                    .getStartOffset()
+                                    .getStartOffset(),
+                            jdbcTask.getIOConfig()
+                                    .getPartitions().getEndOffset()
                         );
 
-                        // update partitionGroups with the publishing task's offsets (if they are greater than what is
+                        // update groups with the publishing task's offsets (if they are greater than what is
                         // existing) so that the next tasks will start reading from where this task left off
                         Long publishingTaskCurrentOffsets = taskClient.getCurrentOffsets(taskId, true);
-                        Integer partition = 1; //TODO
                         Long offset = publishingTaskCurrentOffsets;
-                        Long partitionOffsets = partitionGroups.get(
-                            getTaskGroupIdForPartition(partition)
-                        );
 
                         boolean succeeded;
                         do {
                           succeeded = true;
-                          Long previousOffset = partitionOffsets = offset;
+                          Long previousOffset = offset;
                           if (previousOffset != null && previousOffset < offset) {
                           }
                         } while (!succeeded);
 
                       } else {
-                        if (!taskGroupId.equals(getTaskGroupIdForPartition(jdbcTask.getIOConfig()
-                                                                                   .getPartitions()
-                                                                                   .getStartOffset()))) {
+                        if (!taskGroupId.equals(getTaskGroup())) {
                           log.warn(
                               "Stopping task [%s] which does not match the expected partition allocation",
                               taskId
@@ -797,6 +773,9 @@ public class JDBCSupervisor implements Supervisor
                                 jdbcTask.getIOConfig()
                                         .getPartitions()
                                         .getStartOffset()
+                                , jdbcTask.getIOConfig()
+                                          .getPartitions()
+                                          .getEndOffset()
                                 , jdbcTask.getIOConfig().getMinimumMessageTime()
                             )
                         ) == null) {
@@ -842,14 +821,15 @@ public class JDBCSupervisor implements Supervisor
   private void addDiscoveredTaskToPendingCompletionTaskGroups(
       int groupId,
       String taskId,
-      Integer startingPartitions
+      Integer startOffsetPos,
+      Integer endOffsetPos
   )
   {
     pendingCompletionTaskGroups.putIfAbsent(groupId, Lists.<TaskGroup>newCopyOnWriteArrayList());
 
     CopyOnWriteArrayList<TaskGroup> taskGroupList = pendingCompletionTaskGroups.get(groupId);
     for (TaskGroup taskGroup : taskGroupList) {
-      if (taskGroup.partitionOffsets.equals(startingPartitions)) {
+      if (taskGroup.startOffset.equals(startOffsetPos)) {
         if (taskGroup.tasks.putIfAbsent(taskId, new TaskData()) == null) {
           log.info("Added discovered task [%s] to existing pending task group", taskId);
         }
@@ -861,7 +841,7 @@ public class JDBCSupervisor implements Supervisor
 
     // reading the minimumMessageTime from the publishing task and setting it here is not necessary as this task cannot
     // change to a state where it will read any more events
-    TaskGroup newTaskGroup = new TaskGroup(startingPartitions, Optional.<DateTime>absent());
+    TaskGroup newTaskGroup = new TaskGroup(startOffsetPos, endOffsetPos, Optional.<DateTime>absent());
 
     newTaskGroup.tasks.put(taskId, new TaskData());
     newTaskGroup.completionTimeout = DateTime.now().plus(ioConfig.getCompletionTimeout());
@@ -975,7 +955,7 @@ public class JDBCSupervisor implements Supervisor
         pendingCompletionTaskGroups.get(groupId).add(group);
 
         // set endOffsets as the next startOffsets
-        partitionGroups.put(groupId, endOffsets);
+        groups.put(groupId, endOffsets);
       } else {
         log.warn(
             "All tasks in group [%s] failed to transition to publishing state, killing tasks [%s]",
@@ -1167,7 +1147,7 @@ public class JDBCSupervisor implements Supervisor
           }
 
           // reset partitions offsets for this task group so that they will be re-read from metadata storage
-          partitionGroups.remove(groupId);
+          groups.remove(groupId);
 
           // stop all the tasks in this pending completion group
           futures.add(stopTasksInGroup(group));
@@ -1243,16 +1223,22 @@ public class JDBCSupervisor implements Supervisor
 
   void createNewTasks()
   {
-    // check that there is a current task group for each group of partitions in [partitionGroups]
-    for (Integer groupId : partitionGroups.keySet()) {
+    // check that there is a current task group for each group of partitions in [groups]
+    for (Integer groupId : groups.keySet()) {
       if (!taskGroups.containsKey(groupId)) {
-        log.info("Creating new task group [%d] for partitions %s", groupId, partitionGroups.get(groupId));
+        log.info("Creating new task group [%d", groupId);
 
         Optional<DateTime> minimumMessageTime = (ioConfig.getLateMessageRejectionPeriod().isPresent() ? Optional.of(
             DateTime.now().minus(ioConfig.getLateMessageRejectionPeriod().get())
         ) : Optional.<DateTime>absent());
 
-        taskGroups.put(groupId, new TaskGroup(0, minimumMessageTime)); //TODO::: check value
+        taskGroups.put(
+            groupId,
+            new TaskGroup(ioConfig.getPartitions().getStartOffset(),
+                          ioConfig.getPartitions().getEndOffset(),
+                          minimumMessageTime
+            )
+        );
       }
     }
 
@@ -1281,8 +1267,8 @@ public class JDBCSupervisor implements Supervisor
 
   private void createJDBCTasksForGroup(int groupId, int replicas)
   {
-    Integer startPartitions = taskGroups.get(groupId).partitionOffsets;
-    Integer endPartitions = startPartitions;
+    Integer start = taskGroups.get(groupId).startOffset;
+    Integer end = taskGroups.get(groupId).endOffset;
 
     String sequenceName = generateSequenceName(groupId);
 
@@ -1295,7 +1281,7 @@ public class JDBCSupervisor implements Supervisor
         ioConfig.getPassword(),
         ioConfig.getConnectURI(),
         ioConfig.getDriverClass(),
-        new JDBCPartitions(ioConfig.getTable(), startPartitions, endPartitions),
+        new JDBCOffsets(ioConfig.getTable(), start, end),
         true,
         false,
         minimumMessageTime,
@@ -1392,9 +1378,9 @@ public class JDBCSupervisor implements Supervisor
     }
   }
 
-  private int getTaskGroupIdForPartition(int partition)
+  private int getTaskGroup()
   {
-    return partition % ioConfig.getTaskCount();
+    return 1 % ioConfig.getTaskCount(); //TODO:::check task group ID
   }
 
   private boolean isTaskInPendingCompletionGroups(String taskId)
@@ -1411,8 +1397,8 @@ public class JDBCSupervisor implements Supervisor
 
   private JDBCSupervisorReport generateReport(boolean includeOffsets)
   {
-    int numPartitions = (int)partitionGroups.values().stream().count();
-    Long partitionLag = getLagPerPartition(getHighestCurrentOffsets());
+    int numPartitions = (int) groups.values().stream().count();
+    Long lag = getLag(getHighestCurrentOffsets());
     JDBCSupervisorReport report = new JDBCSupervisorReport(
         dataSource,
         DateTime.now(),
@@ -1421,8 +1407,8 @@ public class JDBCSupervisor implements Supervisor
         ioConfig.getReplicas(),
         ioConfig.getTaskDuration().getMillis() / 1000,
         includeOffsets ? latestOffsetsFromJDBC : null,
-        includeOffsets ? partitionLag : null,
-        includeOffsets ? partitionLag : null,
+        includeOffsets ? lag : null,
+        includeOffsets ? lag : null,
         includeOffsets ? offsetsLastUpdated : null
     );
 
@@ -1444,12 +1430,12 @@ public class JDBCSupervisor implements Supervisor
           taskReports.add(
               new TaskReportData(
                   taskId,
-                  includeOffsets ? taskGroup.partitionOffsets : 0L,
-                  includeOffsets ? currentOffsets : 0L,
+                  includeOffsets ? taskGroup.startOffset : 0L,
+                  includeOffsets ? taskGroup.endOffset : 0L,
                   startTime,
                   remainingSeconds,
                   TaskReportData.TaskType.ACTIVE,
-                  includeOffsets ? getLagPerPartition(currentOffsets) : null  //TODO::: check value
+                  includeOffsets ? getLag(currentOffsets) : null  //TODO::: check value
               )
           );
         }
@@ -1470,8 +1456,8 @@ public class JDBCSupervisor implements Supervisor
             taskReports.add(
                 new TaskReportData(
                     taskId,
-                    includeOffsets ? taskGroup.partitionOffsets : 0L,
-                    includeOffsets ? currentOffsets : 0L,
+                    includeOffsets ? taskGroup.startOffset : 0L,
+                    includeOffsets ? taskGroup.endOffset : 0L,
                     startTime,
                     remainingSeconds,
                     TaskReportData.TaskType.PUBLISHING,
@@ -1498,14 +1484,11 @@ public class JDBCSupervisor implements Supervisor
 
   private Long getHighestCurrentOffsets()
   {
-    return taskGroups
-        .values()
-        .stream()
-        .flatMap(taskGroup -> taskGroup.tasks.entrySet().stream())
-        .count();
+    return taskGroups.get(getTaskGroup()).endOffset.longValue();
+
   }
 
-  private Long getLagPerPartition(Long currentOffsets)
+  private Long getLag(Long currentOffsets)
   {
     return currentOffsets;
   }
@@ -1516,7 +1499,7 @@ public class JDBCSupervisor implements Supervisor
       try {
         Long highestCurrentOffsets = getHighestCurrentOffsets();
 
-        long lag = getLagPerPartition(highestCurrentOffsets);
+        long lag = getLag(highestCurrentOffsets);
 
         emitter.emit(
             ServiceMetricEvent.builder().setDimension("dataSource", dataSource).build("ingest/jdbc/lag", lag)
@@ -1530,24 +1513,8 @@ public class JDBCSupervisor implements Supervisor
 
   private void updateLatestOffsetsFromJDBC()
   {
-//    synchronized (consumerLock) {
-//      final Map<String, List<PartitionInfo>> topics = consumer.listTopics();
-//
-//      if (topics == null || !topics.containsKey(ioConfig.getTopic())) {
-//        throw new ISE("Could not retrieve partitions for topic [%s]", ioConfig.getTopic());
-//      }
-//
-//      final Set<TopicPartition> topicPartitions = topics.get(ioConfig.getTopic())
-//                                                        .stream()
-//                                                        .map(x -> new TopicPartition(x.topic(), x.partition()))
-//                                                        .collect(Collectors.toSet());
-//      consumer.assign(topicPartitions);
-//      consumer.seekToEnd(topicPartitions);
-//
-//      latestOffsetsFromJDBC = topicPartitions
-//          .stream()
-//          .collect(Collectors.toMap(TopicPartition::partition, consumer::position));
-//    }
+
+    latestOffsetsFromJDBC = getHighestCurrentOffsets();
   }
 
 

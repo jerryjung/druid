@@ -306,9 +306,9 @@ public class JDBCIndexTask extends AbstractTask implements ChatHandler
         nextOffsets = ioConfig.getPartitions().getStartOffset();
       } else {
         final Map<String, Object> restoredMetadataMap = (Map) restoredMetadata;
-        final JDBCPartitions restoredNextPartitions = toolbox.getObjectMapper().convertValue(
+        final JDBCOffsets restoredNextPartitions = toolbox.getObjectMapper().convertValue(
             restoredMetadataMap.get(METADATA_NEXT_PARTITIONS),
-            JDBCPartitions.class
+            JDBCOffsets.class
         );
         nextOffsets = restoredNextPartitions.getEndOffset();
 
@@ -329,7 +329,6 @@ public class JDBCIndexTask extends AbstractTask implements ChatHandler
               ioConfig.getPartitions().getStartOffset()
           );
         }
-
 
         if (!nextOffsets.equals(ioConfig.getPartitions().getStartOffset())) {
           throw new ISE(
@@ -359,7 +358,7 @@ public class JDBCIndexTask extends AbstractTask implements ChatHandler
             public Object getMetadata()
             {
               return ImmutableMap.of(
-                  METADATA_NEXT_PARTITIONS, new JDBCPartitions(
+                  METADATA_NEXT_PARTITIONS, new JDBCOffsets(
                       ioConfig.getPartitions().getTable(),
                       snapshot,
                       snapshot + snapshot - ioConfig.getPartitions().getStartOffset()
@@ -534,9 +533,9 @@ public class JDBCIndexTask extends AbstractTask implements ChatHandler
 
       final TransactionalSegmentPublisher publisher = (segments, commitMetadata) -> {
 
-        final JDBCPartitions finalPartitions = toolbox.getObjectMapper().convertValue(
+        final JDBCOffsets finalPartitions = toolbox.getObjectMapper().convertValue(
             ((Map) commitMetadata).get(METADATA_NEXT_PARTITIONS),
-            JDBCPartitions.class
+            JDBCOffsets.class
         );
         // Sanity check, we should only be publishing things that match our desired end state.
 //        if (!endOffsets.equals(finalPartitions.getOffset())) {
@@ -985,7 +984,7 @@ public class JDBCIndexTask extends AbstractTask implements ChatHandler
     return false;
   }
 
-  private String makeQuery(List<String> requiredFields, JDBCPartitions partition)
+  private String makeQuery(List<String> requiredFields, JDBCOffsets partition)
   {
     if (requiredFields == null) {
       return new StringBuilder("SELECT *  FROM ").append(ioConfig.getTableName()).toString();

@@ -22,14 +22,14 @@ package io.druid.indexing.jdbc;
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
 
-public class JDBCPartitions
+public class JDBCOffsets
 {
   private final String table;
   private final Integer startOffset;
   private final Integer endOffset;
 
   @JsonCreator
-  public JDBCPartitions(
+  public JDBCOffsets(
       @JsonProperty("table") final String table,
       @JsonProperty("startOffset") final Integer startOffset,
       @JsonProperty("endOffset") final Integer endOffset
@@ -63,7 +63,7 @@ public class JDBCPartitions
   @Override
   public String toString()
   {
-    return "JDBCPartitions{" +
+    return "JDBCOffsets{" +
            "table='" + table + '\'' +
            ", startOffset=" + startOffset +
            ", endOffset=" + endOffset +

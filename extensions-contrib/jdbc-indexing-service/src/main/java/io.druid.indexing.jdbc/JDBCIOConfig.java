@@ -40,7 +40,7 @@ public class JDBCIOConfig implements IOConfig
   private final String password;
   private final String connectURI;
   private final String driverClass;
-  private final JDBCPartitions partitions;
+  private final JDBCOffsets partitions;
   private final boolean useTransaction;
   private final boolean pauseAfterRead;
   private final Optional<DateTime> minimumMessageTime;
@@ -55,7 +55,7 @@ public class JDBCIOConfig implements IOConfig
       @JsonProperty("password") String password,
       @JsonProperty("connectURI") String connectURI,
       @JsonProperty("driverClass") String driverClass,
-      @JsonProperty("partitions") JDBCPartitions partitions,
+      @JsonProperty("partitions") JDBCOffsets partitions,
       @JsonProperty("useTransaction") Boolean useTransaction,
       @JsonProperty("pauseAfterRead") Boolean pauseAfterRead,
       @JsonProperty("minimumMessageTime") DateTime minimumMessageTime,
@@ -79,7 +79,7 @@ public class JDBCIOConfig implements IOConfig
   }
 
   @JsonProperty
-  public JDBCPartitions getPartitions()
+  public JDBCOffsets getPartitions()
   {
     return partitions;
   }

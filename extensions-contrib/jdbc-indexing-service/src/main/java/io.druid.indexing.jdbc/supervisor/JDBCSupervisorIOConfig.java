@@ -23,12 +23,11 @@ import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.google.common.base.Optional;
 import com.google.common.base.Preconditions;
-import io.druid.indexing.jdbc.JDBCPartitions;
+import io.druid.indexing.jdbc.JDBCOffsets;
 import org.joda.time.Duration;
 import org.joda.time.Period;
 
 import java.util.List;
-import java.util.Map;
 
 public class JDBCSupervisorIOConfig
 {
@@ -43,7 +42,7 @@ public class JDBCSupervisorIOConfig
   private final Duration taskDuration;
   private final Duration startDelay;
   private final Duration period;
-  private final JDBCPartitions partitions;
+  private final JDBCOffsets partitions;
   private final Duration completionTimeout;
   private final Optional<Duration> lateMessageRejectionPeriod;
   private final String query;
@@ -61,7 +60,7 @@ public class JDBCSupervisorIOConfig
       @JsonProperty("taskDuration") Period taskDuration,
       @JsonProperty("startDelay") Period startDelay,
       @JsonProperty("period") Period period,
-      @JsonProperty("partitions") JDBCPartitions partitions,
+      @JsonProperty("partitions") JDBCOffsets partitions,
       @JsonProperty("completionTimeout") Period completionTimeout,
       @JsonProperty("lateMessageRejectionPeriod") Period lateMessageRejectionPeriod,
       @JsonProperty("query") String query,
@@ -160,7 +159,7 @@ public class JDBCSupervisorIOConfig
   }
 
   @JsonProperty
-  public JDBCPartitions getPartitions()
+  public JDBCOffsets getPartitions()
   {
     return partitions;
   }
