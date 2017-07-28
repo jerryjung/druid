@@ -163,6 +163,7 @@ public class JDBCSupervisorIOConfig
   {
     return partitions;
   }
+
   @JsonProperty
   public Duration getCompletionTimeout()
   {
@@ -174,7 +175,6 @@ public class JDBCSupervisorIOConfig
   {
     return lateMessageRejectionPeriod;
   }
-
 
 
   @Override
@@ -191,8 +191,7 @@ public class JDBCSupervisorIOConfig
            ", taskDuration=" + taskDuration +
            ", startDelay=" + startDelay +
            ", period=" + period +
-           ", partitionS=" + partitions.getStartOffset()+
-           ", partitionE=" + partitions.getEndOffset()+
+           ", partitions=" + partitions +
            ", completionTimeout=" + completionTimeout +
            ", lateMessageRejectionPeriod=" + lateMessageRejectionPeriod +
            ", query='" + query + '\'' +

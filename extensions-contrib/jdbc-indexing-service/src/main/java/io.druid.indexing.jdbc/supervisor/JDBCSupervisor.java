@@ -30,6 +30,7 @@ import com.google.common.base.Preconditions;
 import com.google.common.base.Predicate;
 import com.google.common.base.Throwables;
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Iterables;
 import com.google.common.collect.Lists;
 import com.google.common.primitives.Ints;
@@ -64,6 +65,7 @@ import io.druid.indexing.overlord.TaskStorage;
 import io.druid.indexing.overlord.supervisor.Supervisor;
 import io.druid.indexing.overlord.supervisor.SupervisorReport;
 import io.druid.java.util.common.IAE;
+import io.druid.java.util.common.StringUtils;
 import io.druid.metadata.EntryExistsException;
 import io.druid.server.metrics.DruidMonitorSchedulerConfig;
 import org.apache.commons.codec.digest.DigestUtils;
@@ -71,6 +73,7 @@ import org.joda.time.DateTime;
 
 import javax.annotation.Nullable;
 import java.io.IOException;
+import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
@@ -119,17 +122,14 @@ public class JDBCSupervisor implements Supervisor
    */
   private static class TaskGroup
   {
-    final Integer startOffset;
-    final Integer endOffset;
-
+    final ImmutableMap<Integer, Integer> offsetsMap;
     final ConcurrentHashMap<String, TaskData> tasks = new ConcurrentHashMap<>();
     final Optional<DateTime> minimumMessageTime;
     DateTime completionTimeout; // is set after signalTasksToFinish(); if not done by timeout, take corrective action
 
-    public TaskGroup(Integer startOffset, Integer endOffset, Optional<DateTime> minimumMessageTime)
+    public TaskGroup(ImmutableMap<Integer, Integer> offsets, Optional<DateTime> minimumMessageTime)
     {
-      this.startOffset = startOffset;
-      this.endOffset = endOffset;
+      this.offsetsMap = offsets;
       this.minimumMessageTime = minimumMessageTime;
     }
 
@@ -143,7 +143,7 @@ public class JDBCSupervisor implements Supervisor
   {
     volatile TaskStatus status;
     volatile DateTime startTime;
-    volatile Long currentOffsets;
+    volatile Map<Integer, Integer> currentOffsets;
   }
 
   // Map<{group ID}, {actively reading task group}>; see documentation for TaskGroup class
@@ -155,7 +155,7 @@ public class JDBCSupervisor implements Supervisor
   // Map<{group ID}, List<{pending completion task groups}>>
   private final ConcurrentHashMap<Integer, CopyOnWriteArrayList<TaskGroup>> pendingCompletionTaskGroups = new ConcurrentHashMap<>();
 
-  private final ConcurrentHashMap<Integer, Long> groups = new ConcurrentHashMap<>();
+  private final ConcurrentHashMap<Integer, Map<Integer, Integer>> groups = new ConcurrentHashMap<>();
   // --------------------------------------------------------
 
   private final TaskStorage taskStorage;
@@ -188,7 +188,7 @@ public class JDBCSupervisor implements Supervisor
   private volatile DateTime firstRunTime;
   private volatile boolean started = false;
   private volatile boolean stopped = false;
-  private volatile Long latestOffsetsFromJDBC;
+  private volatile Map<Integer, Integer> latestOffsetsFromJDBC;
   private volatile DateTime offsetsLastUpdated;
 
   public JDBCSupervisor(
@@ -538,7 +538,7 @@ public class JDBCSupervisor implements Supervisor
       // Reset only the partitions in dataSourceMetadata if it has not been reset yet
       final JDBCDataSourceMetadata resetJDBCMetadata = (JDBCDataSourceMetadata) dataSourceMetadata;
 
-      if (resetJDBCMetadata.getTable().equals(ioConfig.getTable())) {
+      if (resetJDBCMetadata.getJdbcOffsets().getTable().equals(ioConfig.getTable())) {
         // metadata can be null
         final DataSourceMetadata metadata = indexerMetadataStorageCoordinator.getDataSourceMetadata(dataSource);
         if (metadata != null && !(metadata instanceof JDBCDataSourceMetadata)) {
@@ -565,7 +565,7 @@ public class JDBCSupervisor implements Supervisor
       } else {
         log.warn(
             "Reset metadata topic [%s] and supervisor's topic [%s] do not match",
-            resetJDBCMetadata.getTable(),
+            resetJDBCMetadata.getJdbcOffsets().getTable(),
             ioConfig.getTable()
         );
       }
@@ -631,9 +631,11 @@ public class JDBCSupervisor implements Supervisor
   String generateSequenceName(int groupId)
   {
     StringBuilder sb = new StringBuilder();
-    Integer startOffset = taskGroups.get(groupId).startOffset;
-    Integer endOffset = taskGroups.get(groupId).endOffset;
-    sb.append(String.format("+%d(%d)", startOffset, endOffset));
+    Map<Integer, Integer> offsetMaps = taskGroups.get(groupId).offsetsMap;
+    for (Map.Entry<Integer, Integer> entry : offsetMaps.entrySet()) {
+      sb.append(StringUtils.format("+%d(%d)", entry.getKey(), entry.getValue()));
+    }
+
     String offsetStr = sb.toString().substring(1);
 
     Optional<DateTime> minimumMessageTime = taskGroups.get(groupId).minimumMessageTime;
@@ -651,7 +653,7 @@ public class JDBCSupervisor implements Supervisor
     String hashCode = DigestUtils.sha1Hex(dataSchema + tuningConfig + offsetStr + minMsgTimeStr)
                                  .substring(0, 15);
 
-    return Joiner.on("_").join("index_kafka", dataSource, hashCode);
+    return Joiner.on("_").join("index_jdbc", dataSource, hashCode);
   }
 
   private static String getRandomId()
@@ -667,9 +669,9 @@ public class JDBCSupervisor implements Supervisor
   private void updateDataFromJDBC()
   {
     int taskGroupId = getTaskGroup();
-
-    groups.putIfAbsent(taskGroupId, 0L);
-    Long task = groups.get(taskGroupId);
+    Map<Integer, Integer> offsetsMap = ioConfig.getPartitions().getOffsetMaps();
+    groups.putIfAbsent(taskGroupId, offsetsMap);
+    Map<Integer, Integer> task = groups.get(taskGroupId);
 
     // The starting offset for a new partition in [groups] is initially set to NOT_SET; when a new task group
     // is created and is assigned partitions, if the offset in [groups] is NOT_SET it will take the starting
@@ -733,24 +735,26 @@ public class JDBCSupervisor implements Supervisor
                             taskGroupId,
                             taskId,
                             jdbcTask.getIOConfig()
-                                    .getPartitions()
-                                    .getStartOffset(),
-                            jdbcTask.getIOConfig()
-                                    .getPartitions().getEndOffset()
+                                    .getPartitions().getOffsetMaps()
                         );
 
                         // update groups with the publishing task's offsets (if they are greater than what is
                         // existing) so that the next tasks will start reading from where this task left off
-                        Long publishingTaskCurrentOffsets = taskClient.getCurrentOffsets(taskId, true);
-                        Long offset = publishingTaskCurrentOffsets;
+                        Map<Integer, Integer> publishingTaskCurrentOffsets = taskClient.getCurrentOffsets(taskId, true);
+                        for (Map.Entry<Integer, Integer> entry : publishingTaskCurrentOffsets.entrySet()) {
+                          Integer startOffset = entry.getKey();
+                          Integer endOffset = entry.getValue();
+                          ConcurrentHashMap<Integer, Integer> offsets = (ConcurrentHashMap<Integer, Integer>) groups.get(taskGroupId);
 
-                        boolean succeeded;
-                        do {
-                          succeeded = true;
-                          Long previousOffset = offset;
-                          if (previousOffset != null && previousOffset < offset) {
-                          }
-                        } while (!succeeded);
+                          boolean succeeded;
+                          do {
+                            succeeded = true;
+                            Integer previousOffset = offsets.putIfAbsent(startOffset, endOffset);
+                            if (previousOffset != null && previousOffset < endOffset) {
+                              succeeded = offsets.replace(startOffset, previousOffset, endOffset);
+                            }
+                          } while (!succeeded);
+                        }
 
                       } else {
                         if (!taskGroupId.equals(getTaskGroup())) {
@@ -770,12 +774,8 @@ public class JDBCSupervisor implements Supervisor
                         if (taskGroups.putIfAbsent(
                             taskGroupId,
                             new TaskGroup(
-                                jdbcTask.getIOConfig()
-                                        .getPartitions()
-                                        .getStartOffset()
-                                , jdbcTask.getIOConfig()
-                                          .getPartitions()
-                                          .getEndOffset()
+                                ImmutableMap.copyOf(jdbcTask.getIOConfig()
+                                                            .getPartitions().getOffsetMaps())
                                 , jdbcTask.getIOConfig().getMinimumMessageTime()
                             )
                         ) == null) {
@@ -821,15 +821,14 @@ public class JDBCSupervisor implements Supervisor
   private void addDiscoveredTaskToPendingCompletionTaskGroups(
       int groupId,
       String taskId,
-      Integer startOffsetPos,
-      Integer endOffsetPos
+      Map<Integer, Integer> offsetMaps
   )
   {
     pendingCompletionTaskGroups.putIfAbsent(groupId, Lists.<TaskGroup>newCopyOnWriteArrayList());
 
     CopyOnWriteArrayList<TaskGroup> taskGroupList = pendingCompletionTaskGroups.get(groupId);
     for (TaskGroup taskGroup : taskGroupList) {
-      if (taskGroup.startOffset.equals(startOffsetPos)) {
+      if (taskGroup.offsetsMap.equals(offsetMaps)) {
         if (taskGroup.tasks.putIfAbsent(taskId, new TaskData()) == null) {
           log.info("Added discovered task [%s] to existing pending task group", taskId);
         }
@@ -841,7 +840,7 @@ public class JDBCSupervisor implements Supervisor
 
     // reading the minimumMessageTime from the publishing task and setting it here is not necessary as this task cannot
     // change to a state where it will read any more events
-    TaskGroup newTaskGroup = new TaskGroup(startOffsetPos, endOffsetPos, Optional.<DateTime>absent());
+    TaskGroup newTaskGroup = new TaskGroup(ImmutableMap.copyOf(offsetMaps), Optional.<DateTime>absent());
 
     newTaskGroup.tasks.put(taskId, new TaskData());
     newTaskGroup.completionTimeout = DateTime.now().plus(ioConfig.getCompletionTimeout());
@@ -919,7 +918,7 @@ public class JDBCSupervisor implements Supervisor
 
   private void checkTaskDuration() throws InterruptedException, ExecutionException, TimeoutException
   {
-    final List<ListenableFuture<Long>> futures = Lists.newArrayList();
+    final List<ListenableFuture<Map<Integer, Integer>>> futures = Lists.newArrayList();
     final List<Integer> futureGroupIds = Lists.newArrayList();
 
     for (Map.Entry<Integer, TaskGroup> entry : taskGroups.entrySet()) {
@@ -942,11 +941,11 @@ public class JDBCSupervisor implements Supervisor
       }
     }
 
-    List<Long> results = Futures.successfulAsList(futures).get(futureTimeoutInSeconds, TimeUnit.SECONDS);
+    List<Map<Integer, Integer>> results = Futures.successfulAsList(futures).get(futureTimeoutInSeconds, TimeUnit.SECONDS);
     for (int j = 0; j < results.size(); j++) {
       Integer groupId = futureGroupIds.get(j);
       TaskGroup group = taskGroups.get(groupId);
-      Long endOffsets = results.get(j);
+      Map<Integer, Integer> endOffsets = results.get(j);
 
       if (endOffsets != null) {
         // set a timeout and put this group in pendingCompletionTaskGroups so that it can be monitored for completion
@@ -972,7 +971,7 @@ public class JDBCSupervisor implements Supervisor
     }
   }
 
-  private ListenableFuture<Long> signalTasksToFinish(final int groupId)
+  private ListenableFuture<Map<Integer, Integer>> signalTasksToFinish(final int groupId)
   {
     final TaskGroup taskGroup = taskGroups.get(groupId);
 
@@ -989,11 +988,11 @@ public class JDBCSupervisor implements Supervisor
         // metadata store (which will have advanced if we succeeded in publishing and will remain the same if publishing
         // failed and we need to re-ingest)
         return Futures.transform(
-            stopTasksInGroup(taskGroup), new Function<Object, Long>()
+            stopTasksInGroup(taskGroup), new Function<Object, Map<Integer, Integer>>()
             {
               @Nullable
               @Override
-              public Long apply(@Nullable Object input)
+              public Map<Integer, Integer> apply(@Nullable Object input)
               {
                 return null;
               }
@@ -1011,23 +1010,23 @@ public class JDBCSupervisor implements Supervisor
     }
 
     // 2) Pause running tasks
-    final List<ListenableFuture<Long>> pauseFutures = Lists.newArrayList();
+    final List<ListenableFuture<Map<Integer, Integer>>> pauseFutures = Lists.newArrayList();
     final List<String> pauseTaskIds = ImmutableList.copyOf(taskGroup.taskIds());
     for (final String taskId : pauseTaskIds) {
       pauseFutures.add(taskClient.pauseAsync(taskId));
     }
 
     return Futures.transform(
-        Futures.successfulAsList(pauseFutures), new Function<List<Long>, Long>()
+        Futures.successfulAsList(pauseFutures), new Function<List<Map<Integer, Integer>>, Map<Integer, Integer>>()
         {
           @Nullable
           @Override
-          public Long apply(List<Long> input)
+          public Map<Integer, Integer> apply(List<Map<Integer, Integer>> input)
           {
             // 3) Build a map of the highest offset read by any task in the group for each partition
-            Long endOffsets = 0L;
+            final Map<Integer, Integer> endOffsets = new HashMap<>();
             for (int i = 0; i < input.size(); i++) {
-              Long result = input.get(i);
+              Map<Integer, Integer> result = input.get(i);
 
               if (result == null) { // kill tasks that didn't return a value
                 String taskId = pauseTaskIds.get(i);
@@ -1036,7 +1035,12 @@ public class JDBCSupervisor implements Supervisor
                 taskGroup.tasks.remove(taskId);
 
               } else { // otherwise build a map of the highest offsets seen
-                endOffsets = result;
+                for (Map.Entry<Integer, Integer> offset : result.entrySet()) {
+                  if (!endOffsets.containsKey(offset.getKey())
+                      || endOffsets.get(offset.getKey()).compareTo(offset.getValue()) < 0) {
+                    endOffsets.put(offset.getKey(), offset.getValue());
+                  }
+                }
               }
             }
 
@@ -1232,13 +1236,7 @@ public class JDBCSupervisor implements Supervisor
             DateTime.now().minus(ioConfig.getLateMessageRejectionPeriod().get())
         ) : Optional.<DateTime>absent());
 
-        taskGroups.put(
-            groupId,
-            new TaskGroup(ioConfig.getPartitions().getStartOffset(),
-                          ioConfig.getPartitions().getEndOffset(),
-                          minimumMessageTime
-            )
-        );
+        taskGroups.put(groupId, new TaskGroup(generateStartingOffsetsForGroup(groupId), minimumMessageTime));
       }
     }
 
@@ -1265,10 +1263,25 @@ public class JDBCSupervisor implements Supervisor
     }
   }
 
+  private ImmutableMap<Integer, Integer> generateStartingOffsetsForGroup(int groupId)
+  {
+    ImmutableMap.Builder<Integer, Integer> builder = ImmutableMap.builder();
+    for (Map.Entry<Integer, Integer> entry : groups.get(groupId).entrySet()) {
+      Integer startOffset = entry.getKey();
+      Integer endOffset = entry.getValue();
+
+      if (endOffset != null) {
+        // if we are given a startingOffset (set by a previous task group which is pending completion) then use it
+        builder.put(startOffset, endOffset);
+      }
+    }
+    return builder.build();
+  }
+
+
   private void createJDBCTasksForGroup(int groupId, int replicas)
   {
-    Integer start = taskGroups.get(groupId).startOffset;
-    Integer end = taskGroups.get(groupId).endOffset;
+    Map<Integer, Integer> offsetMaps = taskGroups.get(groupId).offsetsMap;
 
     String sequenceName = generateSequenceName(groupId);
 
@@ -1281,7 +1294,7 @@ public class JDBCSupervisor implements Supervisor
         ioConfig.getPassword(),
         ioConfig.getConnectURI(),
         ioConfig.getDriverClass(),
-        new JDBCOffsets(ioConfig.getTable(), start, end),
+        new JDBCOffsets(ioConfig.getTable(), offsetMaps, ioConfig.getPartitions().getInterval()),
         true,
         false,
         minimumMessageTime,
@@ -1398,7 +1411,7 @@ public class JDBCSupervisor implements Supervisor
   private JDBCSupervisorReport generateReport(boolean includeOffsets)
   {
     int numPartitions = (int) groups.values().stream().count();
-    Long lag = getLag(getHighestCurrentOffsets());
+    Map<Integer, Integer> lag = getLag(getHighestCurrentOffsets());
     JDBCSupervisorReport report = new JDBCSupervisorReport(
         dataSource,
         DateTime.now(),
@@ -1408,7 +1421,7 @@ public class JDBCSupervisor implements Supervisor
         ioConfig.getTaskDuration().getMillis() / 1000,
         includeOffsets ? latestOffsetsFromJDBC : null,
         includeOffsets ? lag : null,
-        includeOffsets ? lag : null,
+        includeOffsets ? lag.values().stream().mapToLong(x -> Math.max(x, 0)).max().getAsLong(): null, //TODO:::check
         includeOffsets ? offsetsLastUpdated : null
     );
 
@@ -1419,7 +1432,7 @@ public class JDBCSupervisor implements Supervisor
         for (Map.Entry<String, TaskData> entry : taskGroup.tasks.entrySet()) {
           String taskId = entry.getKey();
           DateTime startTime = entry.getValue().startTime;
-          Long currentOffsets = entry.getValue().currentOffsets;
+          Map<Integer, Integer> currentOffsets = entry.getValue().currentOffsets;
           Long remainingSeconds = null;
           if (startTime != null) {
             remainingSeconds = Math.max(
@@ -1430,8 +1443,7 @@ public class JDBCSupervisor implements Supervisor
           taskReports.add(
               new TaskReportData(
                   taskId,
-                  includeOffsets ? taskGroup.startOffset : 0L,
-                  includeOffsets ? taskGroup.endOffset : 0L,
+                  includeOffsets ? currentOffsets : null,
                   startTime,
                   remainingSeconds,
                   TaskReportData.TaskType.ACTIVE,
@@ -1446,7 +1458,7 @@ public class JDBCSupervisor implements Supervisor
           for (Map.Entry<String, TaskData> entry : taskGroup.tasks.entrySet()) {
             String taskId = entry.getKey();
             DateTime startTime = entry.getValue().startTime;
-            Long currentOffsets = entry.getValue().currentOffsets;
+            Map<Integer, Integer> currentOffsets = entry.getValue().currentOffsets;
             Long remainingSeconds = null;
             if (taskGroup.completionTimeout != null) {
               remainingSeconds = Math.max(0, taskGroup.completionTimeout.getMillis() - DateTime.now().getMillis())
@@ -1456,8 +1468,7 @@ public class JDBCSupervisor implements Supervisor
             taskReports.add(
                 new TaskReportData(
                     taskId,
-                    includeOffsets ? taskGroup.startOffset : 0L,
-                    includeOffsets ? taskGroup.endOffset : 0L,
+                    includeOffsets ? currentOffsets : null,
                     startTime,
                     remainingSeconds,
                     TaskReportData.TaskType.PUBLISHING,
@@ -1482,13 +1493,13 @@ public class JDBCSupervisor implements Supervisor
     return () -> notices.add(new RunNotice());
   }
 
-  private Long getHighestCurrentOffsets()
+  private Map<Integer, Integer> getHighestCurrentOffsets()
   {
-    return taskGroups.get(getTaskGroup()).endOffset.longValue();
+    return taskGroups.get(getTaskGroup()).offsetsMap;
 
   }
 
-  private Long getLag(Long currentOffsets)
+  private Map<Integer, Integer> getLag(Map<Integer, Integer> currentOffsets)
   {
     return currentOffsets;
   }
@@ -1497,10 +1508,9 @@ public class JDBCSupervisor implements Supervisor
   {
     return () -> {
       try {
-        Long highestCurrentOffsets = getHighestCurrentOffsets();
+        Map<Integer, Integer> highestCurrentOffsets = getHighestCurrentOffsets();
 
-        long lag = getLag(highestCurrentOffsets);
-
+        long lag = getLag(highestCurrentOffsets).values().stream().mapToLong(x -> Math.max(x, 0)).max().getAsLong();
         emitter.emit(
             ServiceMetricEvent.builder().setDimension("dataSource", dataSource).build("ingest/jdbc/lag", lag)
         );
@@ -1529,7 +1539,7 @@ public class JDBCSupervisor implements Supervisor
     ).map(
         task -> Futures.transform(
             taskClient.getCurrentOffsetsAsync(task.getKey(), false),
-            (Function<Long, Void>) (currentOffsets) -> {
+            (Function<Map<Integer, Integer>, Void>) (currentOffsets) -> {
               if (currentOffsets != null) {
                 task.getValue().currentOffsets = currentOffsets;
               }

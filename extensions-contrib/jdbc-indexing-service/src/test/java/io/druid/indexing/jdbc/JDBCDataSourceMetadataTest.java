@@ -31,7 +31,8 @@ public class JDBCDataSourceMetadataTest
 
   private static JDBCDataSourceMetadata JM(String datasource, int startOffset, int endOffset)
   {
-    return new JDBCDataSourceMetadata(datasource, startOffset, endOffset);
+//    return new JDBCDataSourceMetadata(datasource, startOffset, endOffset);
+    return null;
   }
 
   @Test

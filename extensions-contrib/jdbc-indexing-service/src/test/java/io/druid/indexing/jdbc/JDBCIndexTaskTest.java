@@ -129,6 +129,7 @@ import org.junit.runners.Parameterized;
 import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -136,7 +137,6 @@ import java.util.concurrent.Callable;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicInteger;
 
 @RunWith(Parameterized.class)
 public class JDBCIndexTaskTest
@@ -175,6 +175,7 @@ public class JDBCIndexTaskTest
       objectMapper
   );
   private static final String tableName = "druid_audit";
+  private static final Map<Integer, Integer> offsets = new HashMap();
   private static final String tsName = "TSCOLUMN";
   private static final List<String> columns = Lists.newArrayList(
       "id",
@@ -187,7 +188,6 @@ public class JDBCIndexTaskTest
   );
   private static ServiceEmitter emitter;
   private static ListeningExecutorService taskExec;
-  private static int tablePostfix;
   private static String uri = "jdbc:mysql://emn-g03-02:3306/druid";
   @Rule
   public final TemporaryFolder tempFolder = new TemporaryFolder();
@@ -203,19 +203,12 @@ public class JDBCIndexTaskTest
   private TaskStorage taskStorage;
   private TaskLockbox taskLockbox;
   private File directory;
-  private String table;
-  private ArrayList arr = new ArrayList();
   private TestDerbyConnector derbyConnector;
-
+  private final int interval = 10;
 
   public JDBCIndexTaskTest(boolean buildV9Directly)
   {
     this.buildV9Directly = buildV9Directly;
-  }
-
-  private static String getTableName()
-  {
-    return "table" + tablePostfix++;
   }
 
   @Parameterized.Parameters(name = "buildV9Directly = {0}")
@@ -262,7 +255,6 @@ public class JDBCIndexTaskTest
     handoffConditionTimeout = 0;
     reportParseExceptions = false;
     doHandoff = true;
-    table = getTableName();
     derbyConnector = derby.getConnector();
     makeToolboxFactory();
 
@@ -298,7 +290,7 @@ public class JDBCIndexTaskTest
             "druid",
             uri,
             "com.mysql.jdbc.Driver",
-            new JDBCOffsets(tableName, 0, 10),
+            new JDBCOffsets(tableName, offsets, interval),
             true,
             false,
             null,
@@ -347,7 +339,7 @@ public class JDBCIndexTaskTest
             "druid",
             uri,
             "com.mysql.jdbc.Driver",
-            new JDBCOffsets(tableName, 0, 10),
+            new JDBCOffsets(tableName, offsets, interval),
             true,
             false,
             null,
@@ -389,7 +381,7 @@ public class JDBCIndexTaskTest
             "druid",
             uri,
             "com.mysql.jdbc.Driver",
-            new JDBCOffsets(tableName, 0, 10),
+            new JDBCOffsets(tableName, offsets, interval),
             true,
             false,
             null,
@@ -441,7 +433,7 @@ public class JDBCIndexTaskTest
             "druid",
             uri,
             "com.mysql.jdbc.Driver",
-            new JDBCOffsets(tableName, 0, 10),
+            new JDBCOffsets(tableName, offsets, interval),
             true,
             false,
             null,
@@ -488,7 +480,7 @@ public class JDBCIndexTaskTest
             "druid",
             uri,
             "com.mysql.jdbc.Driver",
-            new JDBCOffsets(tableName, 0, 10),
+            new JDBCOffsets(tableName, offsets, interval),
             true,
             false,
             null,
@@ -526,7 +518,7 @@ public class JDBCIndexTaskTest
             "druid",
             uri,
             "com.mysql.jdbc.Driver",
-            new JDBCOffsets(tableName, 0, 10),
+            new JDBCOffsets(tableName, offsets, interval),
             true,
             false,
             null,
@@ -545,7 +537,7 @@ public class JDBCIndexTaskTest
             "druid",
             uri,
             "com.mysql.jdbc.Driver",
-            new JDBCOffsets(tableName, 0, 10),
+            new JDBCOffsets(tableName, offsets, interval),
             true,
             false,
             null,
@@ -579,7 +571,7 @@ public class JDBCIndexTaskTest
     Assert.assertEquals(ImmutableSet.of(desc1), publishedDescriptors());
 
     Assert.assertEquals(
-        new JDBCDataSourceMetadata(table, 0, 10),
+        new JDBCDataSourceMetadata(new JDBCOffsets(tableName, new HashMap(0, 10), interval)),
         metadataStorageCoordinator.getDataSourceMetadata(DATA_SCHEMA.getDataSource())
     );
 
@@ -599,7 +591,7 @@ public class JDBCIndexTaskTest
             "druid",
             uri,
             "com.mysql.jdbc.Driver",
-            new JDBCOffsets(tableName, 0, 10),
+            new JDBCOffsets(tableName, offsets, interval),
             true,
             false,
             null,
@@ -618,7 +610,7 @@ public class JDBCIndexTaskTest
             "druid",
             uri,
             "com.mysql.jdbc.Driver",
-            new JDBCOffsets(tableName, 0, 10),
+            new JDBCOffsets(tableName, offsets, interval),
             true,
             false,
             null,
@@ -655,7 +647,7 @@ public class JDBCIndexTaskTest
     Assert.assertEquals(ImmutableSet.of(desc1, desc2, desc3), publishedDescriptors());
 
     Assert.assertEquals(
-        new JDBCDataSourceMetadata(table, 0, 10),
+        new JDBCDataSourceMetadata(new JDBCOffsets(tableName, new HashMap<Integer, Integer>(0, 10), interval)),
         metadataStorageCoordinator.getDataSourceMetadata(DATA_SCHEMA.getDataSource())
     );
     // Check segments in deep storage
@@ -675,7 +667,7 @@ public class JDBCIndexTaskTest
                                                 "druid",
                                                 uri,
                                                 "com.mysql.jdbc.Driver",
-                                                new JDBCOffsets(tableName, 0, 10),
+                                                new JDBCOffsets(tableName, offsets, interval),
                                                 false,
                                                 false,
                                                 null,
@@ -695,7 +687,7 @@ public class JDBCIndexTaskTest
             "druid",
             uri,
             "com.mysql.jdbc.Driver",
-            new JDBCOffsets(tableName, 0, 10),
+            new JDBCOffsets(tableName, offsets, interval),
             false,
             false,
             null,
@@ -754,7 +746,7 @@ public class JDBCIndexTaskTest
             "druid",
             uri,
             "com.mysql.jdbc.Driver",
-            new JDBCOffsets(tableName, 0, 10),
+            new JDBCOffsets(tableName, offsets, interval),
             true,
             false,
             null,
@@ -773,7 +765,7 @@ public class JDBCIndexTaskTest
             "druid",
             uri,
             "com.mysql.jdbc.Driver",
-            new JDBCOffsets(tableName, 0, 10),
+            new JDBCOffsets(tableName, offsets, interval),
             true,
             false,
             null,
@@ -827,7 +819,7 @@ public class JDBCIndexTaskTest
             "druid",
             uri,
             "com.mysql.jdbc.Driver",
-            new JDBCOffsets(tableName, 0, 10),
+            new JDBCOffsets(tableName, offsets, interval),
             true,
             false,
             null,
@@ -844,7 +836,7 @@ public class JDBCIndexTaskTest
 
 
     while (countEvents(task1) != 2) {
-      Thread.sleep(25);
+      Thread.sleep(1);
     }
 
     Assert.assertEquals(2, countEvents(task1));
@@ -863,7 +855,7 @@ public class JDBCIndexTaskTest
             "druid",
             uri,
             "com.mysql.jdbc.Driver",
-            new JDBCOffsets(tableName, 0, 10),
+            new JDBCOffsets(tableName, new HashMap<Integer, Integer>(0, 10), interval),
             true,
             false,
             null,
@@ -895,7 +887,7 @@ public class JDBCIndexTaskTest
     SegmentDescriptor desc2 = SD(task1, "2011/P1D", 0);
     Assert.assertEquals(ImmutableSet.of(desc1, desc2), publishedDescriptors());
     Assert.assertEquals(
-        new JDBCDataSourceMetadata(table, 0, 10),
+        new JDBCDataSourceMetadata(new JDBCOffsets(tableName, new HashMap<Integer, Integer>(0, 10), interval)),
         metadataStorageCoordinator.getDataSourceMetadata(DATA_SCHEMA.getDataSource())
     );
 
@@ -917,7 +909,7 @@ public class JDBCIndexTaskTest
             "druid",
             uri,
             "com.mysql.jdbc.Driver",
-            new JDBCOffsets(tableName, 0, 10),
+            new JDBCOffsets(tableName, offsets, interval),
             true,
             false,
             null,
@@ -939,7 +931,7 @@ public class JDBCIndexTaskTest
     Assert.assertEquals(JDBCIndexTask.Status.PAUSED, task.getStatus());
 
     Assert.assertEquals(ImmutableMap.of(0, 3L), task.getEndOffsets());
-    AtomicInteger newEndOffsets = new AtomicInteger();
+    Map<Integer, Integer> newEndOffsets = new HashMap<Integer, Integer>();
     task.setEndOffsets(newEndOffsets, false);
     Assert.assertEquals(newEndOffsets, task.getEndOffsets());
     Assert.assertEquals(JDBCIndexTask.Status.PAUSED, task.getStatus());
@@ -999,7 +991,7 @@ public class JDBCIndexTaskTest
             "druid",
             uri,
             "com.mysql.jdbc.Driver",
-            new JDBCOffsets(tableName, 0, 10),
+            new JDBCOffsets(tableName, offsets, interval),
             true,
             false,
             null,
@@ -1013,13 +1005,13 @@ public class JDBCIndexTaskTest
     runTask(task);
 
     while (!task.getStatus().equals(JDBCIndexTask.Status.READING)) {
-      Thread.sleep(2000);
+      Thread.sleep(1);
     }
 
     task.pause(0);
 
     while (!task.getStatus().equals(JDBCIndexTask.Status.PAUSED)) {
-      Thread.sleep(25);
+      Thread.sleep(1);
     }
   }
 
@@ -1038,7 +1030,7 @@ public class JDBCIndexTaskTest
             "druid",
             uri,
             "com.mysql.jdbc.Driver",
-            new JDBCOffsets(tableName, 0, 10),
+            new JDBCOffsets(tableName, offsets, interval),
             true,
             false,
             null,
@@ -1120,6 +1112,7 @@ public class JDBCIndexTaskTest
       final Boolean resetOffsetAutomatically
   )
   {
+    offsets.put(0,10);
     final JDBCTuningConfig tuningConfig = new JDBCTuningConfig(
         1000,
         maxRowsPerSegment,
@@ -1217,7 +1210,7 @@ public class JDBCIndexTaskTest
         derby.metadataTablesConfigSupplier().get(),
         derbyConnector
     );
-    taskLockbox = new TaskLockbox(taskStorage);
+    taskLockbox = new TaskLockbox(taskStorage, 3000);
     final TaskActionToolbox taskActionToolbox = new TaskActionToolbox(
         taskLockbox,
         metadataStorageCoordinator,
@@ -1275,7 +1268,7 @@ public class JDBCIndexTaskTest
         new TestDataSegmentAnnouncer(),
         EasyMock.createNiceMock(DataSegmentServerAnnouncer.class),
         handoffNotifierFactory,
-        makeTimeseriesOnlyConglomerate(),
+        this::makeTimeseriesOnlyConglomerate,
         MoreExecutors.sameThreadExecutor(), // queryExecutorService
         EasyMock.createMock(MonitorScheduler.class),
         new SegmentLoaderFactory(
@@ -1292,7 +1285,6 @@ public class JDBCIndexTaskTest
             )
         ),
         testUtils.getTestObjectMapper(),
-        testUtils.getTestIndexMerger(),
         testUtils.getTestIndexIO(),
         MapCache.create(1024),
         new CacheConfig(),

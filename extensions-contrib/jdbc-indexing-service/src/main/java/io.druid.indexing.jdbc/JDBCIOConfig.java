@@ -160,8 +160,7 @@ public class JDBCIOConfig implements IOConfig
            ", password='" + password + '\'' +
            ", connectURI='" + connectURI + '\'' +
            ", driverClass='" + driverClass + '\'' +
-           ", partitionS=" + partitions.getStartOffset() +
-           ", partitionE=" + partitions.getEndOffset() +
+           ", partitions=" + partitions +
            ", useTransaction=" + useTransaction +
            ", pauseAfterRead=" + pauseAfterRead +
            ", minimumMessageTime=" + minimumMessageTime +

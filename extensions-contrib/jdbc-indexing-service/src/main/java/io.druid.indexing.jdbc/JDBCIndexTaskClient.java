@@ -72,6 +72,7 @@ public class JDBCIndexTaskClient
   private final RetryPolicyFactory retryPolicyFactory;
   private final ListeningExecutorService executorService;
   private final long numRetries;
+
   public JDBCIndexTaskClient(
       HttpClient httpClient,
       ObjectMapper jsonMapper,
@@ -141,12 +142,12 @@ public class JDBCIndexTaskClient
     }
   }
 
-  public Long pause(final String id)
+  public Map<Integer, Integer> pause(final String id)
   {
     return pause(id, 0);
   }
 
-  public Long pause(final String id, final long timeout)
+  public Map<Integer, Integer> pause(final String id, final long timeout)
   {
     log.debug("Pause task[%s] timeout[%d]", id, timeout);
 
@@ -189,7 +190,7 @@ public class JDBCIndexTaskClient
     }
     catch (NoTaskLocationException e) {
       log.error("Exception [%s] while pausing Task [%s]", e.getMessage(), id);
-      return 0L;
+      return ImmutableMap.of();
     }
     catch (IOException | InterruptedException e) {
       log.error("Exception [%s] while pausing Task [%s]", e.getMessage(), id);
@@ -231,7 +232,7 @@ public class JDBCIndexTaskClient
     }
   }
 
-  public Long getCurrentOffsets(final String id, final boolean retry)
+  public Map<Integer, Integer>   getCurrentOffsets(final String id, final boolean retry)
   {
     log.debug("GetCurrentOffsets task[%s] retry[%s]", id, retry);
 
@@ -242,7 +243,7 @@ public class JDBCIndexTaskClient
       });
     }
     catch (NoTaskLocationException e) {
-      return 0L;
+      return ImmutableMap.of();
     }
     catch (IOException e) {
       throw Throwables.propagate(e);
@@ -267,12 +268,12 @@ public class JDBCIndexTaskClient
     }
   }
 
-  public boolean setEndOffsets(final String id, final Long endOffsets)
+  public boolean setEndOffsets(final String id, final  Map<Integer,Integer> endOffsets)
   {
     return setEndOffsets(id, endOffsets, false);
   }
 
-  public boolean setEndOffsets(final String id, final Long endOffsets, final boolean resume)
+  public boolean setEndOffsets(final String id, final  Map<Integer,Integer> endOffsets, final boolean resume)
   {
     log.debug("SetEndOffsets task[%s] endOffsets[%s] resume[%s]", id, endOffsets, resume);
 
@@ -323,18 +324,18 @@ public class JDBCIndexTaskClient
     );
   }
 
-  public ListenableFuture<Long> pauseAsync(final String id)
+  public ListenableFuture<Map<Integer,Integer>> pauseAsync(final String id)
   {
     return pauseAsync(id, 0);
   }
 
-  public ListenableFuture<Long> pauseAsync(final String id, final long timeout)
+  public ListenableFuture<Map<Integer,Integer>> pauseAsync(final String id, final long timeout)
   {
     return executorService.submit(
-        new Callable<Long>()
+        new Callable<Map<Integer,Integer>>()
         {
           @Override
-          public Long call() throws Exception
+          public Map<Integer,Integer> call() throws Exception
           {
             return pause(id, timeout);
           }
@@ -370,13 +371,13 @@ public class JDBCIndexTaskClient
     );
   }
 
-  public ListenableFuture<Long> getCurrentOffsetsAsync(final String id, final boolean retry)
+  public ListenableFuture<Map<Integer, Integer>> getCurrentOffsetsAsync(final String id, final boolean retry)
   {
     return executorService.submit(
-        new Callable<Long>()
+        new Callable<Map<Integer, Integer>>()
         {
           @Override
-          public Long call() throws Exception
+          public Map<Integer, Integer> call() throws Exception
           {
             return getCurrentOffsets(id, retry);
           }
@@ -398,13 +399,13 @@ public class JDBCIndexTaskClient
     );
   }
 
-  public ListenableFuture<Boolean> setEndOffsetsAsync(final String id, final Long endOffsets)
+  public ListenableFuture<Boolean> setEndOffsetsAsync(final String id, final  Map<Integer,Integer> endOffsets)
   {
     return setEndOffsetsAsync(id, endOffsets, false);
   }
 
   public ListenableFuture<Boolean> setEndOffsetsAsync(
-      final String id, final Long endOffsets, final boolean resume
+      final String id, final Map<Integer,Integer> endOffsets, final boolean resume
   )
   {
     return executorService.submit(

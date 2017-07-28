@@ -22,22 +22,24 @@ package io.druid.indexing.jdbc;
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
 
+import java.util.Map;
+
 public class JDBCOffsets
 {
   private final String table;
-  private final Integer startOffset;
-  private final Integer endOffset;
+  private final Map<Integer, Integer> offsetMaps;
+  private final int interval;
 
   @JsonCreator
   public JDBCOffsets(
       @JsonProperty("table") final String table,
-      @JsonProperty("startOffset") final Integer startOffset,
-      @JsonProperty("endOffset") final Integer endOffset
+      @JsonProperty("offsetMaps") final Map<Integer, Integer> offsetMaps,
+      @JsonProperty("interval") final int interval
   )
   {
     this.table = table;
-    this.startOffset = startOffset;
-    this.endOffset = endOffset;
+    this.offsetMaps = offsetMaps;
+    this.interval = interval;
 
   }
 
@@ -47,17 +49,16 @@ public class JDBCOffsets
     return table;
   }
 
-
   @JsonProperty
-  public Integer getStartOffset()
+  public Map<Integer, Integer> getOffsetMaps()
   {
-    return startOffset;
+    return offsetMaps;
   }
 
   @JsonProperty
-  public Integer getEndOffset()
+  public int getInterval()
   {
-    return endOffset;
+    return interval;
   }
 
   @Override
@@ -65,8 +66,8 @@ public class JDBCOffsets
   {
     return "JDBCOffsets{" +
            "table='" + table + '\'' +
-           ", startOffset=" + startOffset +
-           ", endOffset=" + endOffset +
+           ", offsetMaps=" + offsetMaps +
+           ", interval=" + interval +
            '}';
   }
 }

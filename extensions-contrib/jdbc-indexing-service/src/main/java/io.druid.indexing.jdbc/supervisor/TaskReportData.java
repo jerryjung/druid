@@ -34,26 +34,23 @@ public class TaskReportData
   }
 
   private final String id;
-  private final Long startingOffsets;
+  private final Map<Integer,Integer>  offsets;
   private final DateTime startTime;
   private final Long remainingSeconds;
   private final TaskType type;
-  private final Long currentOffsets;
-  private final Long lag;
+  private final Map<Integer, Integer> lag;
 
   public TaskReportData(
       String id,
-      @Nullable Long startingOffsets,
-      @Nullable Long currentOffsets,
+      @Nullable Map<Integer,Integer> offsets,
       DateTime startTime,
       Long remainingSeconds,
       TaskType type,
-      @Nullable Long lag
+      @Nullable Map<Integer, Integer> lag
   )
   {
     this.id = id;
-    this.startingOffsets = startingOffsets;
-    this.currentOffsets = currentOffsets;
+    this.offsets = offsets;
     this.startTime = startTime;
     this.remainingSeconds = remainingSeconds;
     this.type = type;
@@ -68,16 +65,9 @@ public class TaskReportData
 
   @JsonProperty
   @JsonInclude(JsonInclude.Include.NON_NULL)
-  public Long getStartingOffsets()
+  public Map<Integer,Integer>  getOffsets()
   {
-    return startingOffsets;
-  }
-
-  @JsonProperty
-  @JsonInclude(JsonInclude.Include.NON_NULL)
-  public Long getCurrentOffsets()
-  {
-    return currentOffsets;
+    return offsets;
   }
 
   @JsonProperty
@@ -100,7 +90,7 @@ public class TaskReportData
 
   @JsonProperty
   @JsonInclude(JsonInclude.Include.NON_NULL)
-  public Long getLag()
+  public Map<Integer, Integer> getLag()
   {
     return lag;
   }
@@ -108,13 +98,13 @@ public class TaskReportData
   @Override
   public String toString()
   {
-    return "{" +
+    return "TaskReportData{" +
            "id='" + id + '\'' +
-           (startingOffsets != null ? ", startingOffsets=" + startingOffsets : "") +
-           (currentOffsets != null ? ", currentOffsets=" + currentOffsets : "") +
+           ", offsets=" + offsets +
            ", startTime=" + startTime +
            ", remainingSeconds=" + remainingSeconds +
-           (lag != null ? ", lag=" + lag : "") +
+           ", type=" + type +
+           ", lag=" + lag +
            '}';
   }
 }

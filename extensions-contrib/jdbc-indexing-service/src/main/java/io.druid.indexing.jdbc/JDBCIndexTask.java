@@ -98,9 +98,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.Random;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
@@ -128,8 +128,6 @@ public class JDBCIndexTask extends AbstractTask implements ChatHandler
   private final JDBCTuningConfig tuningConfig;
   private final JDBCIOConfig ioConfig;
   private final Optional<ChatHandlerProvider> chatHandlerProvider;
-  private final String DEFAULT_NULLSTRING = "";
-  private final float DEFAULT_NULLNUMERIC = 0;
   private final Lock pauseLock = new ReentrantLock();
   private final Condition hasPaused = pauseLock.newCondition();
   private final Condition shouldResume = pauseLock.newCondition();
@@ -146,8 +144,8 @@ public class JDBCIndexTask extends AbstractTask implements ChatHandler
   // blocks until after stopGracefully() has set [stopRequested] and then does a final check on [stopRequested] before
   // transitioning to publishing state.
   private final Object statusLock = new Object();
-  private Integer endOffsets = 0;
-  private Integer nextOffsets = 0;
+  private Map<Integer, Integer> endOffsets = new ConcurrentHashMap<>();
+  private Map<Integer, Integer> nextOffsets = new ConcurrentHashMap<>();
   private ObjectMapper mapper;
   private volatile Appenderator appenderator = null;
   private volatile FireDepartmentMetrics fireDepartmentMetrics = null;
@@ -201,7 +199,7 @@ public class JDBCIndexTask extends AbstractTask implements ChatHandler
     this.tuningConfig = Preconditions.checkNotNull(tuningConfig, "tuningConfig");
     this.ioConfig = Preconditions.checkNotNull(ioConfig, "ioConfig");
     this.chatHandlerProvider = Optional.fromNullable(chatHandlerProvider);
-
+    this.endOffsets.putAll(ioConfig.getPartitions().getOffsetMaps());
   }
 
   private static String makeTaskId(String dataSource, int randomBits)
@@ -303,14 +301,14 @@ public class JDBCIndexTask extends AbstractTask implements ChatHandler
       // Start up, set up initial offsets.
       final Object restoredMetadata = driver.startJob();
       if (restoredMetadata == null) {
-        nextOffsets = ioConfig.getPartitions().getStartOffset();
+        nextOffsets.putAll(ioConfig.getPartitions().getOffsetMaps());
       } else {
         final Map<String, Object> restoredMetadataMap = (Map) restoredMetadata;
         final JDBCOffsets restoredNextPartitions = toolbox.getObjectMapper().convertValue(
             restoredMetadataMap.get(METADATA_NEXT_PARTITIONS),
             JDBCOffsets.class
         );
-        nextOffsets = restoredNextPartitions.getEndOffset();
+        nextOffsets.putAll(restoredNextPartitions.getOffsetMaps());
 
 
         // Sanity checks.
@@ -322,26 +320,26 @@ public class JDBCIndexTask extends AbstractTask implements ChatHandler
           );
         }
 
-        if (!nextOffsets.equals(ioConfig.getPartitions().getStartOffset())) {
+        if (!nextOffsets.equals(ioConfig.getPartitions().getOffsetMaps())) {
           throw new ISE(
               "WTF?! Restored partitions[%s] but expected partitions[%s]",
               nextOffsets,
-              ioConfig.getPartitions().getStartOffset()
+              ioConfig.getPartitions().getOffsetMaps()
           );
         }
 
-        if (!nextOffsets.equals(ioConfig.getPartitions().getStartOffset())) {
+        if (!nextOffsets.equals(ioConfig.getPartitions().getOffsetMaps())) {
           throw new ISE(
               "WTF?! Restored partitions[%s] but expected partitions[%s]",
               nextOffsets,
-              ioConfig.getPartitions().getStartOffset()
+              ioConfig.getPartitions().getOffsetMaps()
           );
         }
       }
 
 
       // Set up sequenceNames.
-      final Map<Integer, String> sequenceNames = Maps.newHashMap();
+      final Map<Map<Integer, Integer>, String> sequenceNames = Maps.newHashMap();
       sequenceNames.put(nextOffsets, String.format("%s_%s", ioConfig.getBaseSequenceName(), nextOffsets));
 
       // Set up committer.
@@ -350,7 +348,7 @@ public class JDBCIndexTask extends AbstractTask implements ChatHandler
         @Override
         public Committer get()
         {
-          final Integer snapshot = nextOffsets;
+          final Map<Integer, Integer> snapshot = ImmutableMap.copyOf(nextOffsets);
 
           return new Committer()
           {
@@ -361,7 +359,7 @@ public class JDBCIndexTask extends AbstractTask implements ChatHandler
                   METADATA_NEXT_PARTITIONS, new JDBCOffsets(
                       ioConfig.getPartitions().getTable(),
                       snapshot,
-                      snapshot + snapshot - ioConfig.getPartitions().getStartOffset()
+                      ioConfig.getPartitions().getInterval()
                   )
               );
 
@@ -378,9 +376,11 @@ public class JDBCIndexTask extends AbstractTask implements ChatHandler
 
       status = Status.READING;
       try {
-        Integer assignment = nextOffsets;
-        boolean stillReading = !assignment.equals(0);
-        final String query = (ioConfig.getQuery() != null) ? ioConfig.getQuery() : makeQuery(ioConfig.getColumns(), ioConfig.getPartitions());
+        Map<Integer, Integer> assignment = nextOffsets;
+        boolean stillReading = !assignment.isEmpty();
+        final String query = (ioConfig.getQuery() != null)
+                             ? ioConfig.getQuery()
+                             : makeQuery(ioConfig.getColumns(), ioConfig.getPartitions());
         org.skife.jdbi.v2.Query<Map<String, Object>> dbiQuery = handle.createQuery(query);
 
         final ResultIterator<InputRow> rowIterator = dbiQuery.map(
@@ -511,13 +511,15 @@ public class JDBCIndexTask extends AbstractTask implements ChatHandler
               fireDepartmentMetrics.incrementUnparseable();
             }
           }
-          nextOffsets = (getCurrentOffsets() + 1);
+          org.skife.jdbi.v2.Query<Map<String, Object>> maxItemQuery = handle.createQuery(makeMaxQuery(ioConfig.getPartitions()));
+          Map<String, Object> map = maxItemQuery.list(1).get(0);
+          long currOffset = maxItemQuery != null ? (long)maxItemQuery.list(1).get(0).get("MAX") : 0;
+          nextOffsets.put(
+              (int)currOffset,
+              (int)currOffset + ioConfig.getPartitions().getInterval()
+          ); //TODO:::check set interval value
 
         }
-
-
-        //TODO::: query
-
 
       }
       finally {
@@ -533,12 +535,12 @@ public class JDBCIndexTask extends AbstractTask implements ChatHandler
 
       final TransactionalSegmentPublisher publisher = (segments, commitMetadata) -> {
 
-        final JDBCOffsets finalPartitions = toolbox.getObjectMapper().convertValue(
+        final JDBCOffsets finalOffsets = toolbox.getObjectMapper().convertValue(
             ((Map) commitMetadata).get(METADATA_NEXT_PARTITIONS),
             JDBCOffsets.class
         );
-        // Sanity check, we should only be publishing things that match our desired end state.
-//        if (!endOffsets.equals(finalPartitions.getOffset())) {
+        // Sanity check, we should only be publishing things that match our desired end state. //TODO::: Santiny Check!
+//        if (!endOffsets.equals(finalOffsets.getOffsetMaps())) {
 //          throw new ISE("WTF?! Driver attempted to publish invalid metadata[%s].", commitMetadata);
 //        }
 
@@ -547,8 +549,8 @@ public class JDBCIndexTask extends AbstractTask implements ChatHandler
         if (ioConfig.isUseTransaction()) {
           action = new SegmentTransactionalInsertAction(
               segments,
-              new JDBCDataSourceMetadata(ioConfig.getTableName(), ioConfig.getPartitions().getStartOffset(), ioConfig.getPartitions().getEndOffset()),
-              new JDBCDataSourceMetadata(ioConfig.getTableName(), endOffsets, endOffsets + endOffsets - ioConfig.getPartitions().getStartOffset())
+              new JDBCDataSourceMetadata(ioConfig.getPartitions()),
+              new JDBCDataSourceMetadata(ioConfig.getPartitions()) //TODO::: Check Values
           );
         } else {
           action = new SegmentTransactionalInsertAction(segments, null, null);
@@ -721,7 +723,7 @@ public class JDBCIndexTask extends AbstractTask implements ChatHandler
   @GET
   @Path("/offsets/current")
   @Produces(MediaType.APPLICATION_JSON)
-  public Integer getCurrentOffsets()
+  public Map<Integer, Integer> getCurrentOffsets()
   {
     return nextOffsets;
   }
@@ -729,7 +731,7 @@ public class JDBCIndexTask extends AbstractTask implements ChatHandler
   @GET
   @Path("/offsets/end")
   @Produces(MediaType.APPLICATION_JSON)
-  public Integer getEndOffsets()
+  public Map<Integer, Integer> getEndOffsets()
   {
     return endOffsets;
   }
@@ -739,7 +741,7 @@ public class JDBCIndexTask extends AbstractTask implements ChatHandler
   @Consumes(MediaType.APPLICATION_JSON)
   @Produces(MediaType.APPLICATION_JSON)
   public Response setEndOffsets(
-      AtomicInteger offsets,
+      Map<Integer, Integer> offsets,
       @QueryParam("resume")
       @DefaultValue("false")
       final boolean resume
@@ -749,7 +751,7 @@ public class JDBCIndexTask extends AbstractTask implements ChatHandler
       return Response.status(Response.Status.BAD_REQUEST)
                      .entity("Request body must contain a map of { partition:endOffset }")
                      .build();
-    } else if (endOffsets != offsets.get()) {
+    } else if (endOffsets != offsets) {
       return Response.status(Response.Status.BAD_REQUEST)
                      .entity(
                          String.format(
@@ -768,7 +770,7 @@ public class JDBCIndexTask extends AbstractTask implements ChatHandler
                        .build();
       }
 
-      endOffsets = offsets.get();
+      endOffsets = offsets;
       log.info("endOffsets changed to %s", endOffsets);
     }
     finally {
@@ -898,7 +900,7 @@ public class JDBCIndexTask extends AbstractTask implements ChatHandler
         toolbox.getSegmentPusher(),
         toolbox.getObjectMapper(),
         toolbox.getIndexIO(),
-        tuningConfig.getBuildV9Directly() ? toolbox.getIndexMergerV9() : toolbox.getIndexMerger(),
+        toolbox.getIndexMergerV9(),
         toolbox.getQueryRunnerFactoryConglomerate(),
         toolbox.getSegmentAnnouncer(),
         toolbox.getEmitter(),
@@ -986,6 +988,7 @@ public class JDBCIndexTask extends AbstractTask implements ChatHandler
 
   private String makeQuery(List<String> requiredFields, JDBCOffsets partition)
   {
+
     if (requiredFields == null) {
       return new StringBuilder("SELECT *  FROM ").append(ioConfig.getTableName()).toString();
     }
@@ -993,7 +996,23 @@ public class JDBCIndexTask extends AbstractTask implements ChatHandler
                                        .append(" from ")
                                        .append(ioConfig.getTableName())
                                        .append(" where ")
-                                       .append(" id >="+partition.getStartOffset() +" and id<="+partition.getEndOffset())
+                                       .append(" id >="
+                                               + partition.getOffsetMaps().keySet().toArray()[0]
+                                               + " and id<="
+                                               + partition.getOffsetMaps().values().toArray()[0])
+                                       .toString();
+  }
+
+  private String makeMaxQuery(JDBCOffsets partition)
+  {
+    return new StringBuilder("SELECT ").append("MAX(ID) AS MAX")
+                                       .append(" FROM ")
+                                       .append(ioConfig.getTableName())
+                                       .append(" WHERE ")
+                                       .append(" id >="
+                                               + partition.getOffsetMaps().keySet().toArray()[0]
+                                               + " and id<="
+                                               + partition.getOffsetMaps().values().toArray()[0])
                                        .toString();
   }
 
