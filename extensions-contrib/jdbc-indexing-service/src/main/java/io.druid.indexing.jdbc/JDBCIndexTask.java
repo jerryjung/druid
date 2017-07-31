@@ -628,6 +628,7 @@ public class JDBCIndexTask extends AbstractTask implements ChatHandler
       if (chatHandlerProvider.isPresent()) {
         chatHandlerProvider.get().unregister(getId());
       }
+      handle.close();
     }
 
     toolbox.getDataSegmentServerAnnouncer().unannounce();
