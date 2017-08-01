@@ -31,181 +31,102 @@ import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.ExpectedException;
 
-public class JDBCIOConfigTest
-{
-  @Rule
-  public final ExpectedException exception = ExpectedException.none();
-  private final ObjectMapper mapper;
+public class JDBCIOConfigTest {
+    @Rule
+    public final ExpectedException exception = ExpectedException.none();
+    private final ObjectMapper mapper;
 
-  public JDBCIOConfigTest()
-  {
-    mapper = new DefaultObjectMapper();
-    mapper.registerModules((Iterable<Module>) new JDBCIndexTaskModule().getJacksonModules());
-  }
+    public JDBCIOConfigTest() {
+        mapper = new DefaultObjectMapper();
+        mapper.registerModules((Iterable<Module>) new JDBCIndexTaskModule().getJacksonModules());
+    }
 
-  @Test
-  public void testSerdeWithDefaults() throws Exception
-  {
-    String jsonStr = "{\n"
-                     + "  \"type\": \"jdbc\",\n"
-                     + "  \"baseSequenceName\": \"my-sequence-name\",\n"
-                     + "  \"tableName\": \"dummy\",\n"
-                     + "  \"user\": \"dummy\",\n"
-                     + "  \"password\": \"dummy\",\n"
-                     + "  \"connectURI\": \"dummy\",\n"
-                     + "  \"driverClass\": \"dummy\",\n"
-                     + "  \"startPartitions\": {\"table\":\"table\",\"offset\":\"10\"},\n"
-                     + "  \"endPartitions\": {\"table\":\"table\",\"offset\":\"10\"},\n"
-                     + "  \"useTransaction\": true,\n"
-                     + "  \"pauseAfterRead\": false,\n"
-                     + "  \"query\": \"dummy\",\n"
-                     + "  \"columns\": [\"dummy\"]\n"
-                     + "}";
+    @Test
+    public void testSerdeWithDefaults() throws Exception {
+        String jsonStr = "{\n"
+                + "  \"type\": \"jdbc\",\n"
+                + "  \"baseSequenceName\": \"my-sequence-name\",\n"
+                + "  \"tableName\": \"dummy\",\n"
+                + "  \"user\": \"dummy\",\n"
+                + "  \"password\": \"dummy\",\n"
+                + "  \"connectURI\": \"dummy\",\n"
+                + "  \"driverClass\": \"dummy\",\n"
+                + "  \"partitions\": {\"table\":\"table\",\"offsetMaps\":{\"0\":\"10\"},\"interval\":\"10\" },\n"
+                + "  \"useTransaction\": true,\n"
+                + "  \"pauseAfterRead\": false,\n"
+                + "  \"query\": \"dummy\",\n"
+                + "  \"columns\": [\"dummy\"]\n"
+                + "}";
 
-    JDBCIOConfig config = (JDBCIOConfig) mapper.readValue(
-        mapper.writeValueAsString(
-            mapper.readValue(
-                jsonStr,
-                IOConfig.class
-            )
-        ), IOConfig.class
-    );
+        JDBCIOConfig config = (JDBCIOConfig) mapper.readValue(
+                mapper.writeValueAsString(
+                        mapper.readValue(
+                                jsonStr,
+                                IOConfig.class
+                        )
+                ), IOConfig.class
+        );
 
-    Assert.assertEquals("my-sequence-name", config.getBaseSequenceName());
-    Assert.assertEquals("dummy", config.getTableName());
-    Assert.assertEquals(true, config.isUseTransaction());
-    Assert.assertEquals(false, config.isPauseAfterRead());
-    Assert.assertFalse("minimumMessageTime", config.getMinimumMessageTime().isPresent());
-  }
+        Assert.assertEquals("my-sequence-name", config.getBaseSequenceName());
+        Assert.assertEquals("dummy", config.getTableName());
+        Assert.assertEquals(true, config.isUseTransaction());
+        Assert.assertEquals(false, config.isPauseAfterRead());
+        Assert.assertFalse("minimumMessageTime", config.getMinimumMessageTime().isPresent());
+    }
 
-  @Test
-  public void testSerdeWithNonDefaults() throws Exception
-  {
-    String jsonStr = "{\n"
-                     + "  \"type\": \"jdbc\",\n"
-                     + "  \"baseSequenceName\": \"my-sequence-name\",\n"
-                     + "  \"tableName\": \"dummy\",\n"
-                     + "  \"user\": \"dummy\",\n"
-                     + "  \"password\": \"dummy\",\n"
-                     + "  \"connectURI\": \"dummy\",\n"
-                     + "  \"driverClass\": \"dummy\",\n"
-                     + "  \"startPartitions\": {\"table\":\"table\",\"offset\":\"0\"},\n"
-                     + "  \"endPartitions\": {\"table\":\"table\",\"offset\":\"10\"},\n"
-                     + "  \"query\": \"dummy\",\n"
-                     + "  \"useTransaction\": false,\n"
-                     + "  \"pauseAfterRead\": true,\n"
-                     + "  \"minimumMessageTime\": \"2016-05-31T12:00Z\",\n"
-                     + "  \"skipOffsetGaps\": true\n"
-                     + "}";
+    @Test
+    public void testSerdeWithNonDefaults() throws Exception {
+        String jsonStr = "{\n"
+                + "  \"type\": \"jdbc\",\n"
+                + "  \"baseSequenceName\": \"my-sequence-name\",\n"
+                + "  \"tableName\": \"dummy\",\n"
+                + "  \"user\": \"dummy\",\n"
+                + "  \"password\": \"dummy\",\n"
+                + "  \"connectURI\": \"dummy\",\n"
+                + "  \"driverClass\": \"dummy\",\n"
+                + "  \"partitions\": {\"table\":\"table\",\"offsetMaps\":{\"0\":\"10\"},\"interval\":\"10\" },\n"
+                + "  \"query\": \"dummy\",\n"
+                + "  \"useTransaction\": false,\n"
+                + "  \"pauseAfterRead\": true,\n"
+                + "  \"minimumMessageTime\": \"2016-05-31T12:00Z\",\n"
+                + "  \"skipOffsetGaps\": true\n"
+                + "}";
 
-    JDBCIOConfig config = (JDBCIOConfig) mapper.readValue(
-        mapper.writeValueAsString(
-            mapper.readValue(
-                jsonStr,
-                IOConfig.class
-            )
-        ), IOConfig.class
-    );
+        JDBCIOConfig config = (JDBCIOConfig) mapper.readValue(
+                mapper.writeValueAsString(
+                        mapper.readValue(
+                                jsonStr,
+                                IOConfig.class
+                        )
+                ), IOConfig.class
+        );
 
-    Assert.assertEquals("my-sequence-name", config.getBaseSequenceName());
-    Assert.assertEquals("table", config.getPartitions().getTable());
-//    Assert.assertEquals(new Integer(0), config.getPartitions().getStartOffset());
-    Assert.assertEquals(false, config.isUseTransaction());
-    Assert.assertEquals(true, config.isPauseAfterRead());
-    Assert.assertEquals(new DateTime("2016-05-31T12:00Z"), config.getMinimumMessageTime().get());
-  }
+        Assert.assertEquals("my-sequence-name", config.getBaseSequenceName());
+        Assert.assertEquals("table", config.getPartitions().getTable());
+        Assert.assertEquals(false, config.isUseTransaction());
+        Assert.assertEquals(true, config.isPauseAfterRead());
+        Assert.assertEquals(new DateTime("2016-05-31T12:00Z"), config.getMinimumMessageTime().get());
+    }
 
-  @Test
-  public void testBaseSequenceNameRequired() throws Exception
-  {
-    String jsonStr = "{\n"
-                     + "  \"type\": \"jdbc\",\n"
-                     + "  \"tableName\": \"dummy\",\n"
-                     + "  \"user\": \"dummy\",\n"
-                     + "  \"password\": \"dummy\",\n"
-                     + "  \"connectURI\": \"dummy\",\n"
-                     + "  \"driverClass\": \"dummy\",\n"
-                     + "  \"startPartitions\": {\"table\":\"table\",\"offset\":\"10\"},\n"
-                     + "  \"endPartitions\": {\"table\":\"table\",\"offset\":\"10\"},\n"
-                     + "  \"useTransaction\": true,\n"
-                     + "  \"pauseAfterRead\": false,\n"
-                     + "  \"query\": \"dummy\",\n"
-                     + "  \"columns\": [\"dummy\"]\n"
-                     + "}";
+    @Test
+    public void testBaseSequenceNameRequired() throws Exception {
+        String jsonStr = "{\n"
+                + "  \"type\": \"jdbc\",\n"
+                + "  \"tableName\": \"dummy\",\n"
+                + "  \"user\": \"dummy\",\n"
+                + "  \"password\": \"dummy\",\n"
+                + "  \"connectURI\": \"dummy\",\n"
+                + "  \"driverClass\": \"dummy\",\n"
+                + "  \"partitions\": {\"table\":\"table\",\"offsetMaps\":{\"0\":\"10\"},\"interval\":\"10\" },\n"
+                + "  \"useTransaction\": true,\n"
+                + "  \"pauseAfterRead\": false,\n"
+                + "  \"query\": \"dummy\",\n"
+                + "  \"columns\": [\"dummy\"]\n"
+                + "}";
 
-    exception.expect(JsonMappingException.class);
-    exception.expectCause(CoreMatchers.isA(NullPointerException.class));
-    exception.expectMessage(CoreMatchers.containsString("baseSequenceName"));
-    mapper.readValue(jsonStr, IOConfig.class);
-  }
-
-  @Test
-  public void testStartPartitionsRequired() throws Exception
-  {
-    String jsonStr = "{\n"
-                     + "  \"type\": \"jdbc\",\n"
-                     + "  \"baseSequenceName\": \"my-sequence-name\",\n"
-                     + "  \"tableName\": \"dummy\",\n"
-                     + "  \"user\": \"dummy\",\n"
-                     + "  \"password\": \"dummy\",\n"
-                     + "  \"connectURI\": \"dummy\",\n"
-                     + "  \"driverClass\": \"dummy\",\n"
-                     + "  \"endPartitions\": {\"table\":\"table\",\"offset\":\"10\"},\n"
-                     + "  \"useTransaction\": true,\n"
-                     + "  \"pauseAfterRead\": false,\n"
-                     + "  \"query\": \"dummy\",\n"
-                     + "  \"columns\": [\"dummy\"]\n"
-                     + "}";
-
-    exception.expect(JsonMappingException.class);
-    exception.expectCause(CoreMatchers.isA(NullPointerException.class));
-    exception.expectMessage(CoreMatchers.containsString("startPartitions"));
-    mapper.readValue(jsonStr, IOConfig.class);
-  }
-
-  @Test
-  public void testStartAndEndTableMatch() throws Exception
-  {
-    String jsonStr = "{\n"
-                     + "  \"type\": \"jdbc\",\n"
-                     + "  \"baseSequenceName\": \"my-sequence-name\",\n"
-                     + "  \"tableName\": \"dummy\",\n"
-                     + "  \"user\": \"dummy\",\n"
-                     + "  \"password\": \"dummy\",\n"
-                     + "  \"connectURI\": \"dummy\",\n"
-                     + "  \"driverClass\": \"dummy\",\n"
-                     + "  \"startPartitions\": {\"table\":\"table\",\"offset\":\"10\"},\n"
-                     + "  \"endPartitions\": {\"table\":\"table1\",\"offset\":\"10\"},\n"
-                     + "  \"useTransaction\": false,\n"
-                     + "  \"pauseAfterRead\": true,\n"
-                     + "  \"minimumMessageTime\": \"2016-05-31T12:00Z\",\n"
-                     + "  \"query\": \"dummy\",\n"
-                     + "  \"columns\": [\"dummy\"]\n"
-                     + "}";
-
-    mapper.readValue(jsonStr, IOConfig.class);
-  }
-
-  @Test
-  public void testEndOffsetGreaterThanStart() throws Exception
-  {
-    String jsonStr = "{\n"
-                     + "  \"type\": \"jdbc\",\n"
-                     + "  \"baseSequenceName\": \"my-sequence-name\",\n"
-                     + "  \"tableName\": \"dummy\",\n"
-                     + "  \"user\": \"dummy\",\n"
-                     + "  \"password\": \"dummy\",\n"
-                     + "  \"connectURI\": \"dummy\",\n"
-                     + "  \"driverClass\": \"dummy\",\n"
-                     + "  \"startPartitions\": {\"table\":\"table\",\"offset\":\"20\"},\n"
-                     + "  \"endPartitions\": {\"table\":\"table\",\"offset\":\"10\"},\n"
-                     + "  \"useTransaction\": false,\n"
-                     + "  \"pauseAfterRead\": true,\n"
-                     + "  \"minimumMessageTime\": \"2016-05-31T12:00Z\",\n"
-                     + "  \"query\": \"dummy\",\n"
-                     + "  \"columns\": [\"dummy\"]\n"
-                     + "}";
-
-    mapper.readValue(jsonStr, IOConfig.class);
-  }
+        exception.expect(JsonMappingException.class);
+        exception.expectCause(CoreMatchers.isA(NullPointerException.class));
+        exception.expectMessage(CoreMatchers.containsString("baseSequenceName"));
+        mapper.readValue(jsonStr, IOConfig.class);
+    }
 }
