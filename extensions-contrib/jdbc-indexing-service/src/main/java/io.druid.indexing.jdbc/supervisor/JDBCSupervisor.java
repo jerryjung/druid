@@ -1338,11 +1338,11 @@ public class JDBCSupervisor implements Supervisor {
                     taskReports.add(
                             new TaskReportData(
                                     taskId,
-                                    includeOffsets ? currentOffsets : null,
+                                    includeOffsets ? taskGroup.offsetsMap : null,
                                     startTime,
                                     remainingSeconds,
                                     TaskReportData.TaskType.ACTIVE,
-                                    includeOffsets ? getLag(currentOffsets) : null  //TODO::: check value
+                                    includeOffsets ? getLag(currentOffsets) : null //TODO::: check value
                             )
                     );
                 }
@@ -1363,7 +1363,7 @@ public class JDBCSupervisor implements Supervisor {
                         taskReports.add(
                                 new TaskReportData(
                                         taskId,
-                                        includeOffsets ? currentOffsets : null,
+                                        includeOffsets ? taskGroup.offsetsMap : null,
                                         startTime,
                                         remainingSeconds,
                                         TaskReportData.TaskType.PUBLISHING,
