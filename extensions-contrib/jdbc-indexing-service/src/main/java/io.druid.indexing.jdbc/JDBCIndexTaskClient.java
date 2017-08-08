@@ -250,13 +250,13 @@ public class JDBCIndexTaskClient
     }
   }
 
-  public Map<Integer, Long> getEndOffsets(final String id)
+  public Map<Integer, Integer> getEndOffsets(final String id)
   {
     log.debug("GetEndOffsets task[%s]", id);
 
     try {
       final FullResponseHolder response = submitRequest(id, HttpMethod.GET, "offsets/end", null, true);
-      return jsonMapper.readValue(response.getContent(), new TypeReference<Map<Integer, Long>>()
+      return jsonMapper.readValue(response.getContent(), new TypeReference<Map<Integer, Integer>>()
       {
       });
     }
@@ -385,13 +385,13 @@ public class JDBCIndexTaskClient
     );
   }
 
-  public ListenableFuture<Map<Integer, Long>> getEndOffsetsAsync(final String id)
+  public ListenableFuture<Map<Integer, Integer>> getEndOffsetsAsync(final String id)
   {
     return executorService.submit(
-        new Callable<Map<Integer, Long>>()
+        new Callable<Map<Integer, Integer>>()
         {
           @Override
-          public Map<Integer, Long> call() throws Exception
+          public Map<Integer, Integer> call() throws Exception
           {
             return getEndOffsets(id);
           }

@@ -140,8 +140,8 @@ public class JDBCIndexTaskClientTest extends EasyMockSupport
     Assert.assertEquals(null, client.getStartTime(TEST_ID));
     Assert.assertEquals(ImmutableMap.of(), client.getCurrentOffsets(TEST_ID, true));
     Assert.assertEquals(ImmutableMap.of(), client.getEndOffsets(TEST_ID));
-//    Assert.assertEquals(false, client.setEndOffsets(TEST_ID, ImmutableMap.<Integer, Long>of()));
-//    Assert.assertEquals(false, client.setEndOffsets(TEST_ID, ImmutableMap.<Integer, Long>of(), true));
+    Assert.assertEquals(false, client.setEndOffsets(TEST_ID, ImmutableMap.<Integer, Integer>of()));
+    Assert.assertEquals(false, client.setEndOffsets(TEST_ID, ImmutableMap.<Integer, Integer>of(), true));
 
     verifyAll();
   }
@@ -218,10 +218,10 @@ public class JDBCIndexTaskClientTest extends EasyMockSupport
     ).times(2);
     replayAll();
 
-//    Map<Integer, Long> results = client.getCurrentOffsets(TEST_ID, true);
-//    verifyAll();
-//
-//    Assert.assertEquals(0, results.size());
+    Map<Integer, Integer> results = client.getCurrentOffsets(TEST_ID, true);
+    verifyAll();
+
+    Assert.assertEquals(0, results.size());
   }
 
   @Test
@@ -235,8 +235,8 @@ public class JDBCIndexTaskClientTest extends EasyMockSupport
     );
     replayAll();
 
-//    Map<Integer, Long> results = client.getCurrentOffsets(TEST_ID, true);
-//    verifyAll();
+    Map<Integer, Integer> results = client.getCurrentOffsets(TEST_ID, true);
+    verifyAll();
 
     Request request = captured.getValue();
     Assert.assertEquals(HttpMethod.GET, request.getMethod());
@@ -246,9 +246,9 @@ public class JDBCIndexTaskClientTest extends EasyMockSupport
     );
     Assert.assertTrue(request.getHeaders().get("X-Druid-Task-Id").contains("test-id"));
 
-//    Assert.assertEquals(2, results.size());
-//    Assert.assertEquals(1, (long) results.get(0));
-//    Assert.assertEquals(10, (long) results.get(1));
+    Assert.assertEquals(2, results.size());
+    Assert.assertEquals(1, (int)results.get(0));
+    Assert.assertEquals(10, (int)results.get(1));
   }
 
   @Test
@@ -271,8 +271,8 @@ public class JDBCIndexTaskClientTest extends EasyMockSupport
 
     replayAll();
 
-//    Map<Integer, Long> results = client.getCurrentOffsets(TEST_ID, true);
-//    verifyAll();
+    Map<Integer, Integer> results = client.getCurrentOffsets(TEST_ID, true);
+    verifyAll();
 
     Assert.assertEquals(3, captured.getValues().size());
     for (Request request : captured.getValues()) {
@@ -284,9 +284,9 @@ public class JDBCIndexTaskClientTest extends EasyMockSupport
       Assert.assertTrue(request.getHeaders().get("X-Druid-Task-Id").contains("test-id"));
     }
 
-//    Assert.assertEquals(2, results.size());
-//    Assert.assertEquals(1, (long) results.get(0));
-//    Assert.assertEquals(10, (long) results.get(1));
+    Assert.assertEquals(2, results.size());
+    Assert.assertEquals(1, (int) results.get(0));
+    Assert.assertEquals(10, (int) results.get(1));
   }
 
   @Test(expected = RuntimeException.class)
@@ -324,7 +324,7 @@ public class JDBCIndexTaskClientTest extends EasyMockSupport
     );
     replayAll();
 
-    Map<Integer, Long> results = client.getEndOffsets(TEST_ID);
+    Map<Integer, Integer> results = client.getEndOffsets(TEST_ID);
     verifyAll();
 
     Request request = captured.getValue();
@@ -399,566 +399,566 @@ public class JDBCIndexTaskClientTest extends EasyMockSupport
     Assert.assertEquals(status, results);
   }
 
-//  @Test
-//  public void testPause() throws Exception
-//  {
-//    Capture<Request> captured = Capture.newInstance();
-//    expect(responseHolder.getStatus()).andReturn(HttpResponseStatus.OK).times(2);
-//    expect(responseHolder.getContent()).andReturn("{\"0\":1, \"1\":10}").anyTimes();
-//    expect(httpClient.go(capture(captured), anyObject(FullResponseHandler.class), eq(TEST_HTTP_TIMEOUT))).andReturn(
-//        Futures.immediateFuture(responseHolder)
-//    );
-//    replayAll();
-//
-//    Map<Integer, Long> results = client.pause(TEST_ID);
-//    verifyAll();
-//
-//    Request request = captured.getValue();
-//    Assert.assertEquals(HttpMethod.POST, request.getMethod());
-//    Assert.assertEquals(
-//        new URL("http://test-host:1234/druid/worker/v1/chat/test-id/pause"),
-//        request.getUrl()
-//    );
-//    Assert.assertTrue(request.getHeaders().get("X-Druid-Task-Id").contains("test-id"));
-//
-//    Assert.assertEquals(2, results.size());
-//    Assert.assertEquals(1, (long) results.get(0));
-//    Assert.assertEquals(10, (long) results.get(1));
-//  }
-//
-//  @Test
-//  public void testPauseWithTimeout() throws Exception
-//  {
-//    Capture<Request> captured = Capture.newInstance();
-//    expect(responseHolder.getStatus()).andReturn(HttpResponseStatus.OK).times(2);
-//    expect(responseHolder.getContent()).andReturn("{\"0\":1, \"1\":10}").anyTimes();
-//    expect(httpClient.go(capture(captured), anyObject(FullResponseHandler.class), eq(TEST_HTTP_TIMEOUT))).andReturn(
-//        Futures.immediateFuture(responseHolder)
-//    );
-//    replayAll();
-//
-//    Map<Integer, Long> results = client.pause(TEST_ID, 101);
-//    verifyAll();
-//
-//    Request request = captured.getValue();
-//    Assert.assertEquals(HttpMethod.POST, request.getMethod());
-//    Assert.assertEquals(
-//        new URL("http://test-host:1234/druid/worker/v1/chat/test-id/pause?timeout=101"),
-//        request.getUrl()
-//    );
-//    Assert.assertTrue(request.getHeaders().get("X-Druid-Task-Id").contains("test-id"));
-//
-//    Assert.assertEquals(2, results.size());
-//    Assert.assertEquals(1, (long) results.get(0));
-//    Assert.assertEquals(10, (long) results.get(1));
-//  }
-//
-//  @Test
-//  public void testPauseWithSubsequentGetOffsets() throws Exception
-//  {
-//    Capture<Request> captured = Capture.newInstance();
-//    Capture<Request> captured2 = Capture.newInstance();
-//    Capture<Request> captured3 = Capture.newInstance();
-//    expect(responseHolder.getStatus()).andReturn(HttpResponseStatus.ACCEPTED).times(2)
-//                                      .andReturn(HttpResponseStatus.OK).times(2);
-//    expect(responseHolder.getContent()).andReturn("\"PAUSED\"")
-//                                       .andReturn("{\"0\":1, \"1\":10}").anyTimes();
-//    expect(httpClient.go(capture(captured), anyObject(FullResponseHandler.class), eq(TEST_HTTP_TIMEOUT))).andReturn(
-//        Futures.immediateFuture(responseHolder)
-//    );
-//    expect(httpClient.go(capture(captured2), anyObject(FullResponseHandler.class), eq(TEST_HTTP_TIMEOUT))).andReturn(
-//        Futures.immediateFuture(responseHolder)
-//    );
-//    expect(httpClient.go(capture(captured3), anyObject(FullResponseHandler.class), eq(TEST_HTTP_TIMEOUT))).andReturn(
-//        Futures.immediateFuture(responseHolder)
-//    );
-//
-//    replayAll();
-//
-//    Map<Integer, Long> results = client.pause(TEST_ID);
-//    verifyAll();
-//
-//    Request request = captured.getValue();
-//    Assert.assertEquals(HttpMethod.POST, request.getMethod());
-//    Assert.assertEquals(
-//        new URL("http://test-host:1234/druid/worker/v1/chat/test-id/pause"),
-//        request.getUrl()
-//    );
-//    Assert.assertTrue(request.getHeaders().get("X-Druid-Task-Id").contains("test-id"));
-//
-//    request = captured2.getValue();
-//    Assert.assertEquals(HttpMethod.GET, request.getMethod());
-//    Assert.assertEquals(
-//        new URL("http://test-host:1234/druid/worker/v1/chat/test-id/status"),
-//        request.getUrl()
-//    );
-//
-//    request = captured3.getValue();
-//    Assert.assertEquals(HttpMethod.GET, request.getMethod());
-//    Assert.assertEquals(
-//        new URL("http://test-host:1234/druid/worker/v1/chat/test-id/offsets/current"),
-//        request.getUrl()
-//    );
-//
-//    Assert.assertEquals(2, results.size());
-//    Assert.assertEquals(1, (long) results.get(0));
-//    Assert.assertEquals(10, (long) results.get(1));
-//  }
-//
-//  @Test
-//  public void testResume() throws Exception
-//  {
-//    Capture<Request> captured = Capture.newInstance();
-//    expect(responseHolder.getStatus()).andReturn(HttpResponseStatus.OK).anyTimes();
-//    expect(httpClient.go(capture(captured), anyObject(FullResponseHandler.class), eq(TEST_HTTP_TIMEOUT))).andReturn(
-//        Futures.immediateFuture(responseHolder)
-//    );
-//    replayAll();
-//
-//    client.resume(TEST_ID);
-//    verifyAll();
-//
-//    Request request = captured.getValue();
-//    Assert.assertEquals(HttpMethod.POST, request.getMethod());
-//    Assert.assertEquals(
-//        new URL("http://test-host:1234/druid/worker/v1/chat/test-id/resume"),
-//        request.getUrl()
-//    );
-//    Assert.assertTrue(request.getHeaders().get("X-Druid-Task-Id").contains("test-id"));
-//  }
-//
-//  @Test
-//  public void testSetEndOffsets() throws Exception
-//  {
-//    Map<Integer, Long> endOffsets = ImmutableMap.of(0, 15L, 1, 120L);
-//
-//    Capture<Request> captured = Capture.newInstance();
-//    expect(responseHolder.getStatus()).andReturn(HttpResponseStatus.OK).anyTimes();
-//    expect(httpClient.go(capture(captured), anyObject(FullResponseHandler.class), eq(TEST_HTTP_TIMEOUT))).andReturn(
-//        Futures.immediateFuture(responseHolder)
-//    );
-//    replayAll();
-//
-//    client.setEndOffsets(TEST_ID, endOffsets);
-//    verifyAll();
-//
-//    Request request = captured.getValue();
-//    Assert.assertEquals(HttpMethod.POST, request.getMethod());
-//    Assert.assertEquals(
-//        new URL("http://test-host:1234/druid/worker/v1/chat/test-id/offsets/end"),
-//        request.getUrl()
-//    );
-//    Assert.assertTrue(request.getHeaders().get("X-Druid-Task-Id").contains("test-id"));
-//    Assert.assertEquals("{\"0\":15,\"1\":120}", StringUtils.fromUtf8(request.getContent().array()));
-//  }
-//
-//  @Test
-//  public void testSetEndOffsetsAndResume() throws Exception
-//  {
-//    Map<Integer, Long> endOffsets = ImmutableMap.of(0, 15L, 1, 120L);
-//
-//    Capture<Request> captured = Capture.newInstance();
-//    expect(responseHolder.getStatus()).andReturn(HttpResponseStatus.OK).anyTimes();
-//    expect(httpClient.go(capture(captured), anyObject(FullResponseHandler.class), eq(TEST_HTTP_TIMEOUT))).andReturn(
-//        Futures.immediateFuture(responseHolder)
-//    );
-//    replayAll();
-//
-//    client.setEndOffsets(TEST_ID, endOffsets, true);
-//    verifyAll();
-//
-//    Request request = captured.getValue();
-//    Assert.assertEquals(HttpMethod.POST, request.getMethod());
-//    Assert.assertEquals(
-//        new URL("http://test-host:1234/druid/worker/v1/chat/test-id/offsets/end?resume=true"),
-//        request.getUrl()
-//    );
-//    Assert.assertTrue(request.getHeaders().get("X-Druid-Task-Id").contains("test-id"));
-//    Assert.assertEquals("{\"0\":15,\"1\":120}", StringUtils.fromUtf8(request.getContent().array()));
-//  }
-//
-//  @Test
-//  public void testStop() throws Exception
-//  {
-//    Capture<Request> captured = Capture.newInstance();
-//    expect(responseHolder.getStatus()).andReturn(HttpResponseStatus.OK).anyTimes();
-//    expect(httpClient.go(capture(captured), anyObject(FullResponseHandler.class), eq(TEST_HTTP_TIMEOUT))).andReturn(
-//        Futures.immediateFuture(responseHolder)
-//    );
-//    replayAll();
-//
-//    client.stop(TEST_ID, false);
-//    verifyAll();
-//
-//    Request request = captured.getValue();
-//    Assert.assertEquals(HttpMethod.POST, request.getMethod());
-//    Assert.assertEquals(
-//        new URL("http://test-host:1234/druid/worker/v1/chat/test-id/stop"),
-//        request.getUrl()
-//    );
-//    Assert.assertTrue(request.getHeaders().get("X-Druid-Task-Id").contains("test-id"));
-//  }
-//
-//  @Test
-//  public void testStopAndPublish() throws Exception
-//  {
-//    Capture<Request> captured = Capture.newInstance();
-//    expect(responseHolder.getStatus()).andReturn(HttpResponseStatus.OK).anyTimes();
-//    expect(httpClient.go(capture(captured), anyObject(FullResponseHandler.class), eq(TEST_HTTP_TIMEOUT))).andReturn(
-//        Futures.immediateFuture(responseHolder)
-//    );
-//    replayAll();
-//
-//    client.stop(TEST_ID, true);
-//    verifyAll();
-//
-//    Request request = captured.getValue();
-//    Assert.assertEquals(HttpMethod.POST, request.getMethod());
-//    Assert.assertEquals(
-//        new URL("http://test-host:1234/druid/worker/v1/chat/test-id/stop?publish=true"),
-//        request.getUrl()
-//    );
-//    Assert.assertTrue(request.getHeaders().get("X-Druid-Task-Id").contains("test-id"));
-//  }
-//
-//  @Test
-//  public void testStopAsync() throws Exception
-//  {
-//    final int numRequests = TEST_IDS.size();
-//    Capture<Request> captured = Capture.newInstance(CaptureType.ALL);
-//    expect(responseHolder.getStatus()).andReturn(HttpResponseStatus.OK).anyTimes();
-//    expect(httpClient.go(capture(captured), anyObject(FullResponseHandler.class), eq(TEST_HTTP_TIMEOUT))).andReturn(
-//        Futures.immediateFuture(responseHolder)
-//    ).times(numRequests);
-//    replayAll();
-//
-//    List<URL> expectedUrls = Lists.newArrayList();
-//    List<ListenableFuture<Boolean>> futures = Lists.newArrayList();
-//    for (int i = 0; i < numRequests; i++) {
-//      expectedUrls.add(new URL(String.format(URL_FORMATTER, TEST_HOST, TEST_PORT, TEST_IDS.get(i), "stop")));
-//      futures.add(client.stopAsync(TEST_IDS.get(i), false));
-//    }
-//
-//    List<Boolean> responses = Futures.allAsList(futures).get();
-//
-//    verifyAll();
-//    List<Request> requests = captured.getValues();
-//
-//    Assert.assertEquals(numRequests, requests.size());
-//    Assert.assertEquals(numRequests, responses.size());
-//    for (int i = 0; i < numRequests; i++) {
-//      Assert.assertEquals(HttpMethod.POST, requests.get(i).getMethod());
-//      Assert.assertTrue("unexpectedURL", expectedUrls.contains(requests.get(i).getUrl()));
-//      Assert.assertTrue(responses.get(i));
-//    }
-//  }
-//
-//  @Test
-//  public void testResumeAsync() throws Exception
-//  {
-//    final int numRequests = TEST_IDS.size();
-//    Capture<Request> captured = Capture.newInstance(CaptureType.ALL);
-//    expect(responseHolder.getStatus()).andReturn(HttpResponseStatus.OK).anyTimes();
-//    expect(httpClient.go(capture(captured), anyObject(FullResponseHandler.class), eq(TEST_HTTP_TIMEOUT))).andReturn(
-//        Futures.immediateFuture(responseHolder)
-//    ).times(numRequests);
-//    replayAll();
-//
-//    List<URL> expectedUrls = Lists.newArrayList();
-//    List<ListenableFuture<Boolean>> futures = Lists.newArrayList();
-//    for (int i = 0; i < numRequests; i++) {
-//      expectedUrls.add(new URL(String.format(URL_FORMATTER, TEST_HOST, TEST_PORT, TEST_IDS.get(i), "resume")));
-//      futures.add(client.resumeAsync(TEST_IDS.get(i)));
-//    }
-//
-//    List<Boolean> responses = Futures.allAsList(futures).get();
-//
-//    verifyAll();
-//    List<Request> requests = captured.getValues();
-//
-//    Assert.assertEquals(numRequests, requests.size());
-//    Assert.assertEquals(numRequests, responses.size());
-//    for (int i = 0; i < numRequests; i++) {
-//      Assert.assertEquals(HttpMethod.POST, requests.get(i).getMethod());
-//      Assert.assertTrue("unexpectedURL", expectedUrls.contains(requests.get(i).getUrl()));
-//      Assert.assertTrue(responses.get(i));
-//    }
-//  }
-//
-//  @Test
-//  public void testPauseAsync() throws Exception
-//  {
-//    final int numRequests = TEST_IDS.size();
-//    Capture<Request> captured = Capture.newInstance(CaptureType.ALL);
-//    expect(responseHolder.getStatus()).andReturn(HttpResponseStatus.OK).anyTimes();
-//    expect(responseHolder.getContent()).andReturn("{\"0\":\"1\"}").anyTimes();
-//    expect(httpClient.go(capture(captured), anyObject(FullResponseHandler.class), eq(TEST_HTTP_TIMEOUT))).andReturn(
-//        Futures.immediateFuture(responseHolder)
-//    ).times(numRequests);
-//    replayAll();
-//
-//    List<URL> expectedUrls = Lists.newArrayList();
-//    List<ListenableFuture<Map<Integer, Long>>> futures = Lists.newArrayList();
-//    for (int i = 0; i < numRequests; i++) {
-//      expectedUrls.add(new URL(String.format(URL_FORMATTER, TEST_HOST, TEST_PORT, TEST_IDS.get(i), "pause")));
-//      futures.add(client.pauseAsync(TEST_IDS.get(i)));
-//    }
-//
-//    List<Map<Integer, Long>> responses = Futures.allAsList(futures).get();
-//
-//    verifyAll();
-//    List<Request> requests = captured.getValues();
-//
-//    Assert.assertEquals(numRequests, requests.size());
-//    Assert.assertEquals(numRequests, responses.size());
-//    for (int i = 0; i < numRequests; i++) {
-//      Assert.assertEquals(HttpMethod.POST, requests.get(i).getMethod());
-//      Assert.assertTrue("unexpectedURL", expectedUrls.contains(requests.get(i).getUrl()));
-//      Assert.assertEquals(Maps.newLinkedHashMap(ImmutableMap.of(0, 1L)), responses.get(i));
-//    }
-//  }
-//
-//  @Test
-//  public void testPauseAsyncWithTimeout() throws Exception
-//  {
-//    final int numRequests = TEST_IDS.size();
-//    Capture<Request> captured = Capture.newInstance(CaptureType.ALL);
-//    expect(responseHolder.getStatus()).andReturn(HttpResponseStatus.OK).anyTimes();
-//    expect(responseHolder.getContent()).andReturn("{\"0\":\"1\"}").anyTimes();
-//    expect(httpClient.go(capture(captured), anyObject(FullResponseHandler.class), eq(TEST_HTTP_TIMEOUT))).andReturn(
-//        Futures.immediateFuture(responseHolder)
-//    ).times(numRequests);
-//    replayAll();
-//
-//    List<URL> expectedUrls = Lists.newArrayList();
-//    List<ListenableFuture<Map<Integer, Long>>> futures = Lists.newArrayList();
-//    for (int i = 0; i < numRequests; i++) {
-//      expectedUrls.add(new URL(String.format(URL_FORMATTER, TEST_HOST, TEST_PORT, TEST_IDS.get(i), "pause?timeout=9")));
-//      futures.add(client.pauseAsync(TEST_IDS.get(i), 9));
-//    }
-//
-//    List<Map<Integer, Long>> responses = Futures.allAsList(futures).get();
-//
-//    verifyAll();
-//    List<Request> requests = captured.getValues();
-//
-//    Assert.assertEquals(numRequests, requests.size());
-//    Assert.assertEquals(numRequests, responses.size());
-//    for (int i = 0; i < numRequests; i++) {
-//      Assert.assertEquals(HttpMethod.POST, requests.get(i).getMethod());
-//      Assert.assertTrue("unexpectedURL", expectedUrls.contains(requests.get(i).getUrl()));
-//      Assert.assertEquals(Maps.newLinkedHashMap(ImmutableMap.of(0, 1L)), responses.get(i));
-//    }
-//  }
-//
-//  @Test
-//  public void testGetStatusAsync() throws Exception
-//  {
-//    final int numRequests = TEST_IDS.size();
-//    Capture<Request> captured = Capture.newInstance(CaptureType.ALL);
-//    expect(responseHolder.getStatus()).andReturn(HttpResponseStatus.OK).anyTimes();
-//    expect(responseHolder.getContent()).andReturn("\"READING\"").anyTimes();
-//    expect(httpClient.go(capture(captured), anyObject(FullResponseHandler.class), eq(TEST_HTTP_TIMEOUT))).andReturn(
-//        Futures.immediateFuture(responseHolder)
-//    ).times(numRequests);
-//    replayAll();
-//
-//    List<URL> expectedUrls = Lists.newArrayList();
-//    List<ListenableFuture<JDBCIndexTask.Status>> futures = Lists.newArrayList();
-//    for (int i = 0; i < numRequests; i++) {
-//      expectedUrls.add(new URL(String.format(URL_FORMATTER, TEST_HOST, TEST_PORT, TEST_IDS.get(i), "status")));
-//      futures.add(client.getStatusAsync(TEST_IDS.get(i)));
-//    }
-//
-//    List<JDBCIndexTask.Status> responses = Futures.allAsList(futures).get();
-//
-//    verifyAll();
-//    List<Request> requests = captured.getValues();
-//
-//    Assert.assertEquals(numRequests, requests.size());
-//    Assert.assertEquals(numRequests, responses.size());
-//    for (int i = 0; i < numRequests; i++) {
-//      Assert.assertEquals(HttpMethod.GET, requests.get(i).getMethod());
-//      Assert.assertTrue("unexpectedURL", expectedUrls.contains(requests.get(i).getUrl()));
-//      Assert.assertEquals(JDBCIndexTask.Status.READING, responses.get(i));
-//    }
-//  }
-//
-//  @Test
-//  public void testGetStartTimeAsync() throws Exception
-//  {
-//    final DateTime now = DateTime.now();
-//    final int numRequests = TEST_IDS.size();
-//    Capture<Request> captured = Capture.newInstance(CaptureType.ALL);
-//    expect(responseHolder.getStatus()).andReturn(HttpResponseStatus.OK).anyTimes();
-//    expect(responseHolder.getContent()).andReturn(String.valueOf(now.getMillis())).anyTimes();
-//    expect(httpClient.go(capture(captured), anyObject(FullResponseHandler.class), eq(TEST_HTTP_TIMEOUT))).andReturn(
-//        Futures.immediateFuture(responseHolder)
-//    ).times(numRequests);
-//    replayAll();
-//
-//    List<URL> expectedUrls = Lists.newArrayList();
-//    List<ListenableFuture<DateTime>> futures = Lists.newArrayList();
-//    for (int i = 0; i < numRequests; i++) {
-//      expectedUrls.add(new URL(String.format(URL_FORMATTER, TEST_HOST, TEST_PORT, TEST_IDS.get(i), "time/start")));
-//      futures.add(client.getStartTimeAsync(TEST_IDS.get(i)));
-//    }
-//
-//    List<DateTime> responses = Futures.allAsList(futures).get();
-//
-//    verifyAll();
-//    List<Request> requests = captured.getValues();
-//
-//    Assert.assertEquals(numRequests, requests.size());
-//    Assert.assertEquals(numRequests, responses.size());
-//    for (int i = 0; i < numRequests; i++) {
-//      Assert.assertEquals(HttpMethod.GET, requests.get(i).getMethod());
-//      Assert.assertTrue("unexpectedURL", expectedUrls.contains(requests.get(i).getUrl()));
-//      Assert.assertEquals(now, responses.get(i));
-//    }
-//  }
-//
-//  @Test
-//  public void testGetCurrentOffsetsAsync() throws Exception
-//  {
-//    final int numRequests = TEST_IDS.size();
-//    Capture<Request> captured = Capture.newInstance(CaptureType.ALL);
-//    expect(responseHolder.getStatus()).andReturn(HttpResponseStatus.OK).anyTimes();
-//    expect(responseHolder.getContent()).andReturn("{\"0\":\"1\"}").anyTimes();
-//    expect(httpClient.go(capture(captured), anyObject(FullResponseHandler.class), eq(TEST_HTTP_TIMEOUT))).andReturn(
-//        Futures.immediateFuture(responseHolder)
-//    ).times(numRequests);
-//    replayAll();
-//
-//    List<URL> expectedUrls = Lists.newArrayList();
-//    List<ListenableFuture<Map<Integer, Long>>> futures = Lists.newArrayList();
-//    for (int i = 0; i < numRequests; i++) {
-//      expectedUrls.add(new URL(String.format(URL_FORMATTER, TEST_HOST, TEST_PORT, TEST_IDS.get(i), "offsets/current")));
-//      futures.add(client.getCurrentOffsetsAsync(TEST_IDS.get(i), false));
-//    }
-//
-//    List<Map<Integer, Long>> responses = Futures.allAsList(futures).get();
-//
-//    verifyAll();
-//    List<Request> requests = captured.getValues();
-//
-//    Assert.assertEquals(numRequests, requests.size());
-//    Assert.assertEquals(numRequests, responses.size());
-//    for (int i = 0; i < numRequests; i++) {
-//      Assert.assertEquals(HttpMethod.GET, requests.get(i).getMethod());
-//      Assert.assertTrue("unexpectedURL", expectedUrls.contains(requests.get(i).getUrl()));
-//      Assert.assertEquals(Maps.newLinkedHashMap(ImmutableMap.of(0, 1L)), responses.get(i));
-//    }
-//  }
-//
-//  @Test
-//  public void testGetEndOffsetsAsync() throws Exception
-//  {
-//    final int numRequests = TEST_IDS.size();
-//    Capture<Request> captured = Capture.newInstance(CaptureType.ALL);
-//    expect(responseHolder.getStatus()).andReturn(HttpResponseStatus.OK).anyTimes();
-//    expect(responseHolder.getContent()).andReturn("{\"0\":\"1\"}").anyTimes();
-//    expect(httpClient.go(capture(captured), anyObject(FullResponseHandler.class), eq(TEST_HTTP_TIMEOUT))).andReturn(
-//        Futures.immediateFuture(responseHolder)
-//    ).times(numRequests);
-//    replayAll();
-//
-//    List<URL> expectedUrls = Lists.newArrayList();
-//    List<ListenableFuture<Map<Integer, Long>>> futures = Lists.newArrayList();
-//    for (int i = 0; i < numRequests; i++) {
-//      expectedUrls.add(new URL(String.format(URL_FORMATTER, TEST_HOST, TEST_PORT, TEST_IDS.get(i), "offsets/end")));
-//      futures.add(client.getEndOffsetsAsync(TEST_IDS.get(i)));
-//    }
-//
-//    List<Map<Integer, Long>> responses = Futures.allAsList(futures).get();
-//
-//    verifyAll();
-//    List<Request> requests = captured.getValues();
-//
-//    Assert.assertEquals(numRequests, requests.size());
-//    Assert.assertEquals(numRequests, responses.size());
-//    for (int i = 0; i < numRequests; i++) {
-//      Assert.assertEquals(HttpMethod.GET, requests.get(i).getMethod());
-//      Assert.assertTrue("unexpectedURL", expectedUrls.contains(requests.get(i).getUrl()));
-//      Assert.assertEquals(Maps.newLinkedHashMap(ImmutableMap.of(0, 1L)), responses.get(i));
-//    }
-//  }
-//
-//  @Test
-//  public void testSetEndOffsetsAsync() throws Exception
-//  {
-//    final Map<Integer, Long> endOffsets = ImmutableMap.of(0, 15L, 1, 120L);
-//    final int numRequests = TEST_IDS.size();
-//    Capture<Request> captured = Capture.newInstance(CaptureType.ALL);
-//    expect(responseHolder.getStatus()).andReturn(HttpResponseStatus.OK).anyTimes();
-//    expect(httpClient.go(capture(captured), anyObject(FullResponseHandler.class), eq(TEST_HTTP_TIMEOUT))).andReturn(
-//        Futures.immediateFuture(responseHolder)
-//    ).times(numRequests);
-//    replayAll();
-//
-//    List<URL> expectedUrls = Lists.newArrayList();
-//    List<ListenableFuture<Boolean>> futures = Lists.newArrayList();
-//    for (int i = 0; i < numRequests; i++) {
-//      expectedUrls.add(new URL(String.format(URL_FORMATTER, TEST_HOST, TEST_PORT, TEST_IDS.get(i), "offsets/end")));
-//      futures.add(client.setEndOffsetsAsync(TEST_IDS.get(i), endOffsets));
-//    }
-//
-//    List<Boolean> responses = Futures.allAsList(futures).get();
-//
-//    verifyAll();
-//    List<Request> requests = captured.getValues();
-//
-//    Assert.assertEquals(numRequests, requests.size());
-//    Assert.assertEquals(numRequests, responses.size());
-//    for (int i = 0; i < numRequests; i++) {
-//      Assert.assertEquals(HttpMethod.POST, requests.get(i).getMethod());
-//      Assert.assertTrue("unexpectedURL", expectedUrls.contains(requests.get(i).getUrl()));
-//      Assert.assertTrue(responses.get(i));
-//    }
-//  }
-//
-//  @Test
-//  public void testSetEndOffsetsAsyncWithResume() throws Exception
-//  {
-//    final Map<Integer, Long> endOffsets = ImmutableMap.of(0, 15L, 1, 120L);
-//    final int numRequests = TEST_IDS.size();
-//    Capture<Request> captured = Capture.newInstance(CaptureType.ALL);
-//    expect(responseHolder.getStatus()).andReturn(HttpResponseStatus.OK).anyTimes();
-//    expect(httpClient.go(capture(captured), anyObject(FullResponseHandler.class), eq(TEST_HTTP_TIMEOUT))).andReturn(
-//        Futures.immediateFuture(responseHolder)
-//    ).times(numRequests);
-//    replayAll();
-//
-//    List<URL> expectedUrls = Lists.newArrayList();
-//    List<ListenableFuture<Boolean>> futures = Lists.newArrayList();
-//    for (int i = 0; i < numRequests; i++) {
-//      expectedUrls.add(
-//          new URL(
-//              String.format(
-//                  URL_FORMATTER,
-//                  TEST_HOST,
-//                  TEST_PORT,
-//                  TEST_IDS.get(i),
-//                  "offsets/end?resume=true"
-//              )
-//          )
-//      );
-//      futures.add(client.setEndOffsetsAsync(TEST_IDS.get(i), endOffsets, true));
-//    }
-//
-//    List<Boolean> responses = Futures.allAsList(futures).get();
-//
-//    verifyAll();
-//    List<Request> requests = captured.getValues();
-//
-//    Assert.assertEquals(numRequests, requests.size());
-//    Assert.assertEquals(numRequests, responses.size());
-//    for (int i = 0; i < numRequests; i++) {
-//      Assert.assertEquals(HttpMethod.POST, requests.get(i).getMethod());
-//      Assert.assertTrue("unexpectedURL", expectedUrls.contains(requests.get(i).getUrl()));
-//      Assert.assertTrue(responses.get(i));
-//    }
-//  }
+  @Test
+  public void testPause() throws Exception
+  {
+    Capture<Request> captured = Capture.newInstance();
+    expect(responseHolder.getStatus()).andReturn(HttpResponseStatus.OK).times(2);
+    expect(responseHolder.getContent()).andReturn("{\"0\":1, \"1\":10}").anyTimes();
+    expect(httpClient.go(capture(captured), anyObject(FullResponseHandler.class), eq(TEST_HTTP_TIMEOUT))).andReturn(
+        Futures.immediateFuture(responseHolder)
+    );
+    replayAll();
+
+    Map<Integer, Integer> results = client.pause(TEST_ID);
+    verifyAll();
+
+    Request request = captured.getValue();
+    Assert.assertEquals(HttpMethod.POST, request.getMethod());
+    Assert.assertEquals(
+        new URL("http://test-host:1234/druid/worker/v1/chat/test-id/pause"),
+        request.getUrl()
+    );
+    Assert.assertTrue(request.getHeaders().get("X-Druid-Task-Id").contains("test-id"));
+
+    Assert.assertEquals(2, results.size());
+    Assert.assertEquals(1, (int) results.get(0));
+    Assert.assertEquals(10, (int) results.get(1));
+  }
+
+  @Test
+  public void testPauseWithTimeout() throws Exception
+  {
+    Capture<Request> captured = Capture.newInstance();
+    expect(responseHolder.getStatus()).andReturn(HttpResponseStatus.OK).times(2);
+    expect(responseHolder.getContent()).andReturn("{\"0\":1, \"1\":10}").anyTimes();
+    expect(httpClient.go(capture(captured), anyObject(FullResponseHandler.class), eq(TEST_HTTP_TIMEOUT))).andReturn(
+        Futures.immediateFuture(responseHolder)
+    );
+    replayAll();
+
+    Map<Integer, Integer> results = client.pause(TEST_ID, 101);
+    verifyAll();
+
+    Request request = captured.getValue();
+    Assert.assertEquals(HttpMethod.POST, request.getMethod());
+    Assert.assertEquals(
+        new URL("http://test-host:1234/druid/worker/v1/chat/test-id/pause?timeout=101"),
+        request.getUrl()
+    );
+    Assert.assertTrue(request.getHeaders().get("X-Druid-Task-Id").contains("test-id"));
+
+    Assert.assertEquals(2, results.size());
+    Assert.assertEquals(1, (long) results.get(0));
+    Assert.assertEquals(10, (long) results.get(1));
+  }
+
+  @Test
+  public void testPauseWithSubsequentGetOffsets() throws Exception
+  {
+    Capture<Request> captured = Capture.newInstance();
+    Capture<Request> captured2 = Capture.newInstance();
+    Capture<Request> captured3 = Capture.newInstance();
+    expect(responseHolder.getStatus()).andReturn(HttpResponseStatus.ACCEPTED).times(2)
+                                      .andReturn(HttpResponseStatus.OK).times(2);
+    expect(responseHolder.getContent()).andReturn("\"PAUSED\"")
+                                       .andReturn("{\"0\":1, \"1\":10}").anyTimes();
+    expect(httpClient.go(capture(captured), anyObject(FullResponseHandler.class), eq(TEST_HTTP_TIMEOUT))).andReturn(
+        Futures.immediateFuture(responseHolder)
+    );
+    expect(httpClient.go(capture(captured2), anyObject(FullResponseHandler.class), eq(TEST_HTTP_TIMEOUT))).andReturn(
+        Futures.immediateFuture(responseHolder)
+    );
+    expect(httpClient.go(capture(captured3), anyObject(FullResponseHandler.class), eq(TEST_HTTP_TIMEOUT))).andReturn(
+        Futures.immediateFuture(responseHolder)
+    );
+
+    replayAll();
+
+    Map<Integer, Integer> results = client.pause(TEST_ID);
+    verifyAll();
+
+    Request request = captured.getValue();
+    Assert.assertEquals(HttpMethod.POST, request.getMethod());
+    Assert.assertEquals(
+        new URL("http://test-host:1234/druid/worker/v1/chat/test-id/pause"),
+        request.getUrl()
+    );
+    Assert.assertTrue(request.getHeaders().get("X-Druid-Task-Id").contains("test-id"));
+
+    request = captured2.getValue();
+    Assert.assertEquals(HttpMethod.GET, request.getMethod());
+    Assert.assertEquals(
+        new URL("http://test-host:1234/druid/worker/v1/chat/test-id/status"),
+        request.getUrl()
+    );
+
+    request = captured3.getValue();
+    Assert.assertEquals(HttpMethod.GET, request.getMethod());
+    Assert.assertEquals(
+        new URL("http://test-host:1234/druid/worker/v1/chat/test-id/offsets/current"),
+        request.getUrl()
+    );
+
+    Assert.assertEquals(2, results.size());
+    Assert.assertEquals(1, (long) results.get(0));
+    Assert.assertEquals(10, (long) results.get(1));
+  }
+
+  @Test
+  public void testResume() throws Exception
+  {
+    Capture<Request> captured = Capture.newInstance();
+    expect(responseHolder.getStatus()).andReturn(HttpResponseStatus.OK).anyTimes();
+    expect(httpClient.go(capture(captured), anyObject(FullResponseHandler.class), eq(TEST_HTTP_TIMEOUT))).andReturn(
+        Futures.immediateFuture(responseHolder)
+    );
+    replayAll();
+
+    client.resume(TEST_ID);
+    verifyAll();
+
+    Request request = captured.getValue();
+    Assert.assertEquals(HttpMethod.POST, request.getMethod());
+    Assert.assertEquals(
+        new URL("http://test-host:1234/druid/worker/v1/chat/test-id/resume"),
+        request.getUrl()
+    );
+    Assert.assertTrue(request.getHeaders().get("X-Druid-Task-Id").contains("test-id"));
+  }
+
+  @Test
+  public void testSetEndOffsets() throws Exception
+  {
+    Map<Integer, Integer> endOffsets = ImmutableMap.of(0, 15, 1, 120);
+
+    Capture<Request> captured = Capture.newInstance();
+    expect(responseHolder.getStatus()).andReturn(HttpResponseStatus.OK).anyTimes();
+    expect(httpClient.go(capture(captured), anyObject(FullResponseHandler.class), eq(TEST_HTTP_TIMEOUT))).andReturn(
+        Futures.immediateFuture(responseHolder)
+    );
+    replayAll();
+
+    client.setEndOffsets(TEST_ID, endOffsets);
+    verifyAll();
+
+    Request request = captured.getValue();
+    Assert.assertEquals(HttpMethod.POST, request.getMethod());
+    Assert.assertEquals(
+        new URL("http://test-host:1234/druid/worker/v1/chat/test-id/offsets/end"),
+        request.getUrl()
+    );
+    Assert.assertTrue(request.getHeaders().get("X-Druid-Task-Id").contains("test-id"));
+    Assert.assertEquals("{\"0\":15,\"1\":120}", StringUtils.fromUtf8(request.getContent().array()));
+  }
+
+  @Test
+  public void testSetEndOffsetsAndResume() throws Exception
+  {
+    Map<Integer, Integer> endOffsets = ImmutableMap.of(0, 15, 1, 120);
+
+    Capture<Request> captured = Capture.newInstance();
+    expect(responseHolder.getStatus()).andReturn(HttpResponseStatus.OK).anyTimes();
+    expect(httpClient.go(capture(captured), anyObject(FullResponseHandler.class), eq(TEST_HTTP_TIMEOUT))).andReturn(
+        Futures.immediateFuture(responseHolder)
+    );
+    replayAll();
+
+    client.setEndOffsets(TEST_ID, endOffsets, true);
+    verifyAll();
+
+    Request request = captured.getValue();
+    Assert.assertEquals(HttpMethod.POST, request.getMethod());
+    Assert.assertEquals(
+        new URL("http://test-host:1234/druid/worker/v1/chat/test-id/offsets/end?resume=true"),
+        request.getUrl()
+    );
+    Assert.assertTrue(request.getHeaders().get("X-Druid-Task-Id").contains("test-id"));
+    Assert.assertEquals("{\"0\":15,\"1\":120}", StringUtils.fromUtf8(request.getContent().array()));
+  }
+
+  @Test
+  public void testStop() throws Exception
+  {
+    Capture<Request> captured = Capture.newInstance();
+    expect(responseHolder.getStatus()).andReturn(HttpResponseStatus.OK).anyTimes();
+    expect(httpClient.go(capture(captured), anyObject(FullResponseHandler.class), eq(TEST_HTTP_TIMEOUT))).andReturn(
+        Futures.immediateFuture(responseHolder)
+    );
+    replayAll();
+
+    client.stop(TEST_ID, false);
+    verifyAll();
+
+    Request request = captured.getValue();
+    Assert.assertEquals(HttpMethod.POST, request.getMethod());
+    Assert.assertEquals(
+        new URL("http://test-host:1234/druid/worker/v1/chat/test-id/stop"),
+        request.getUrl()
+    );
+    Assert.assertTrue(request.getHeaders().get("X-Druid-Task-Id").contains("test-id"));
+  }
+
+  @Test
+  public void testStopAndPublish() throws Exception
+  {
+    Capture<Request> captured = Capture.newInstance();
+    expect(responseHolder.getStatus()).andReturn(HttpResponseStatus.OK).anyTimes();
+    expect(httpClient.go(capture(captured), anyObject(FullResponseHandler.class), eq(TEST_HTTP_TIMEOUT))).andReturn(
+        Futures.immediateFuture(responseHolder)
+    );
+    replayAll();
+
+    client.stop(TEST_ID, true);
+    verifyAll();
+
+    Request request = captured.getValue();
+    Assert.assertEquals(HttpMethod.POST, request.getMethod());
+    Assert.assertEquals(
+        new URL("http://test-host:1234/druid/worker/v1/chat/test-id/stop?publish=true"),
+        request.getUrl()
+    );
+    Assert.assertTrue(request.getHeaders().get("X-Druid-Task-Id").contains("test-id"));
+  }
+
+  @Test
+  public void testStopAsync() throws Exception
+  {
+    final int numRequests = TEST_IDS.size();
+    Capture<Request> captured = Capture.newInstance(CaptureType.ALL);
+    expect(responseHolder.getStatus()).andReturn(HttpResponseStatus.OK).anyTimes();
+    expect(httpClient.go(capture(captured), anyObject(FullResponseHandler.class), eq(TEST_HTTP_TIMEOUT))).andReturn(
+        Futures.immediateFuture(responseHolder)
+    ).times(numRequests);
+    replayAll();
+
+    List<URL> expectedUrls = Lists.newArrayList();
+    List<ListenableFuture<Boolean>> futures = Lists.newArrayList();
+    for (int i = 0; i < numRequests; i++) {
+      expectedUrls.add(new URL(String.format(URL_FORMATTER, TEST_HOST, TEST_PORT, TEST_IDS.get(i), "stop")));
+      futures.add(client.stopAsync(TEST_IDS.get(i), false));
+    }
+
+    List<Boolean> responses = Futures.allAsList(futures).get();
+
+    verifyAll();
+    List<Request> requests = captured.getValues();
+
+    Assert.assertEquals(numRequests, requests.size());
+    Assert.assertEquals(numRequests, responses.size());
+    for (int i = 0; i < numRequests; i++) {
+      Assert.assertEquals(HttpMethod.POST, requests.get(i).getMethod());
+      Assert.assertTrue("unexpectedURL", expectedUrls.contains(requests.get(i).getUrl()));
+      Assert.assertTrue(responses.get(i));
+    }
+  }
+
+  @Test
+  public void testResumeAsync() throws Exception
+  {
+    final int numRequests = TEST_IDS.size();
+    Capture<Request> captured = Capture.newInstance(CaptureType.ALL);
+    expect(responseHolder.getStatus()).andReturn(HttpResponseStatus.OK).anyTimes();
+    expect(httpClient.go(capture(captured), anyObject(FullResponseHandler.class), eq(TEST_HTTP_TIMEOUT))).andReturn(
+        Futures.immediateFuture(responseHolder)
+    ).times(numRequests);
+    replayAll();
+
+    List<URL> expectedUrls = Lists.newArrayList();
+    List<ListenableFuture<Boolean>> futures = Lists.newArrayList();
+    for (int i = 0; i < numRequests; i++) {
+      expectedUrls.add(new URL(String.format(URL_FORMATTER, TEST_HOST, TEST_PORT, TEST_IDS.get(i), "resume")));
+      futures.add(client.resumeAsync(TEST_IDS.get(i)));
+    }
+
+    List<Boolean> responses = Futures.allAsList(futures).get();
+
+    verifyAll();
+    List<Request> requests = captured.getValues();
+
+    Assert.assertEquals(numRequests, requests.size());
+    Assert.assertEquals(numRequests, responses.size());
+    for (int i = 0; i < numRequests; i++) {
+      Assert.assertEquals(HttpMethod.POST, requests.get(i).getMethod());
+      Assert.assertTrue("unexpectedURL", expectedUrls.contains(requests.get(i).getUrl()));
+      Assert.assertTrue(responses.get(i));
+    }
+  }
+
+  @Test
+  public void testPauseAsync() throws Exception
+  {
+    final int numRequests = TEST_IDS.size();
+    Capture<Request> captured = Capture.newInstance(CaptureType.ALL);
+    expect(responseHolder.getStatus()).andReturn(HttpResponseStatus.OK).anyTimes();
+    expect(responseHolder.getContent()).andReturn("{\"0\":\"1\"}").anyTimes();
+    expect(httpClient.go(capture(captured), anyObject(FullResponseHandler.class), eq(TEST_HTTP_TIMEOUT))).andReturn(
+        Futures.immediateFuture(responseHolder)
+    ).times(numRequests);
+    replayAll();
+
+    List<URL> expectedUrls = Lists.newArrayList();
+    List<ListenableFuture<Map<Integer, Integer>>> futures = Lists.newArrayList();
+    for (int i = 0; i < numRequests; i++) {
+      expectedUrls.add(new URL(String.format(URL_FORMATTER, TEST_HOST, TEST_PORT, TEST_IDS.get(i), "pause")));
+      futures.add(client.pauseAsync(TEST_IDS.get(i)));
+    }
+
+    List<Map<Integer, Integer>> responses = Futures.allAsList(futures).get();
+
+    verifyAll();
+    List<Request> requests = captured.getValues();
+
+    Assert.assertEquals(numRequests, requests.size());
+    Assert.assertEquals(numRequests, responses.size());
+    for (int i = 0; i < numRequests; i++) {
+      Assert.assertEquals(HttpMethod.POST, requests.get(i).getMethod());
+      Assert.assertTrue("unexpectedURL", expectedUrls.contains(requests.get(i).getUrl()));
+      Assert.assertEquals(Maps.newLinkedHashMap(ImmutableMap.of(0, 1L)), responses.get(i));
+    }
+  }
+
+  @Test
+  public void testPauseAsyncWithTimeout() throws Exception
+  {
+    final int numRequests = TEST_IDS.size();
+    Capture<Request> captured = Capture.newInstance(CaptureType.ALL);
+    expect(responseHolder.getStatus()).andReturn(HttpResponseStatus.OK).anyTimes();
+    expect(responseHolder.getContent()).andReturn("{\"0\":\"1\"}").anyTimes();
+    expect(httpClient.go(capture(captured), anyObject(FullResponseHandler.class), eq(TEST_HTTP_TIMEOUT))).andReturn(
+        Futures.immediateFuture(responseHolder)
+    ).times(numRequests);
+    replayAll();
+
+    List<URL> expectedUrls = Lists.newArrayList();
+    List<ListenableFuture<Map<Integer, Integer>>> futures = Lists.newArrayList();
+    for (int i = 0; i < numRequests; i++) {
+      expectedUrls.add(new URL(String.format(URL_FORMATTER, TEST_HOST, TEST_PORT, TEST_IDS.get(i), "pause?timeout=9")));
+      futures.add(client.pauseAsync(TEST_IDS.get(i), 9));
+    }
+
+    List<Map<Integer, Integer>> responses = Futures.allAsList(futures).get();
+
+    verifyAll();
+    List<Request> requests = captured.getValues();
+
+    Assert.assertEquals(numRequests, requests.size());
+    Assert.assertEquals(numRequests, responses.size());
+    for (int i = 0; i < numRequests; i++) {
+      Assert.assertEquals(HttpMethod.POST, requests.get(i).getMethod());
+      Assert.assertTrue("unexpectedURL", expectedUrls.contains(requests.get(i).getUrl()));
+      Assert.assertEquals(Maps.newLinkedHashMap(ImmutableMap.of(0, 1)), responses.get(i));
+    }
+  }
+
+  @Test
+  public void testGetStatusAsync() throws Exception
+  {
+    final int numRequests = TEST_IDS.size();
+    Capture<Request> captured = Capture.newInstance(CaptureType.ALL);
+    expect(responseHolder.getStatus()).andReturn(HttpResponseStatus.OK).anyTimes();
+    expect(responseHolder.getContent()).andReturn("\"READING\"").anyTimes();
+    expect(httpClient.go(capture(captured), anyObject(FullResponseHandler.class), eq(TEST_HTTP_TIMEOUT))).andReturn(
+        Futures.immediateFuture(responseHolder)
+    ).times(numRequests);
+    replayAll();
+
+    List<URL> expectedUrls = Lists.newArrayList();
+    List<ListenableFuture<JDBCIndexTask.Status>> futures = Lists.newArrayList();
+    for (int i = 0; i < numRequests; i++) {
+      expectedUrls.add(new URL(String.format(URL_FORMATTER, TEST_HOST, TEST_PORT, TEST_IDS.get(i), "status")));
+      futures.add(client.getStatusAsync(TEST_IDS.get(i)));
+    }
+
+    List<JDBCIndexTask.Status> responses = Futures.allAsList(futures).get();
+
+    verifyAll();
+    List<Request> requests = captured.getValues();
+
+    Assert.assertEquals(numRequests, requests.size());
+    Assert.assertEquals(numRequests, responses.size());
+    for (int i = 0; i < numRequests; i++) {
+      Assert.assertEquals(HttpMethod.GET, requests.get(i).getMethod());
+      Assert.assertTrue("unexpectedURL", expectedUrls.contains(requests.get(i).getUrl()));
+      Assert.assertEquals(JDBCIndexTask.Status.READING, responses.get(i));
+    }
+  }
+
+  @Test
+  public void testGetStartTimeAsync() throws Exception
+  {
+    final DateTime now = DateTime.now();
+    final int numRequests = TEST_IDS.size();
+    Capture<Request> captured = Capture.newInstance(CaptureType.ALL);
+    expect(responseHolder.getStatus()).andReturn(HttpResponseStatus.OK).anyTimes();
+    expect(responseHolder.getContent()).andReturn(String.valueOf(now.getMillis())).anyTimes();
+    expect(httpClient.go(capture(captured), anyObject(FullResponseHandler.class), eq(TEST_HTTP_TIMEOUT))).andReturn(
+        Futures.immediateFuture(responseHolder)
+    ).times(numRequests);
+    replayAll();
+
+    List<URL> expectedUrls = Lists.newArrayList();
+    List<ListenableFuture<DateTime>> futures = Lists.newArrayList();
+    for (int i = 0; i < numRequests; i++) {
+      expectedUrls.add(new URL(String.format(URL_FORMATTER, TEST_HOST, TEST_PORT, TEST_IDS.get(i), "time/start")));
+      futures.add(client.getStartTimeAsync(TEST_IDS.get(i)));
+    }
+
+    List<DateTime> responses = Futures.allAsList(futures).get();
+
+    verifyAll();
+    List<Request> requests = captured.getValues();
+
+    Assert.assertEquals(numRequests, requests.size());
+    Assert.assertEquals(numRequests, responses.size());
+    for (int i = 0; i < numRequests; i++) {
+      Assert.assertEquals(HttpMethod.GET, requests.get(i).getMethod());
+      Assert.assertTrue("unexpectedURL", expectedUrls.contains(requests.get(i).getUrl()));
+      Assert.assertEquals(now, responses.get(i));
+    }
+  }
+
+  @Test
+  public void testGetCurrentOffsetsAsync() throws Exception
+  {
+    final int numRequests = TEST_IDS.size();
+    Capture<Request> captured = Capture.newInstance(CaptureType.ALL);
+    expect(responseHolder.getStatus()).andReturn(HttpResponseStatus.OK).anyTimes();
+    expect(responseHolder.getContent()).andReturn("{\"0\":\"1\"}").anyTimes();
+    expect(httpClient.go(capture(captured), anyObject(FullResponseHandler.class), eq(TEST_HTTP_TIMEOUT))).andReturn(
+        Futures.immediateFuture(responseHolder)
+    ).times(numRequests);
+    replayAll();
+
+    List<URL> expectedUrls = Lists.newArrayList();
+    List<ListenableFuture<Map<Integer, Integer>>> futures = Lists.newArrayList();
+    for (int i = 0; i < numRequests; i++) {
+      expectedUrls.add(new URL(String.format(URL_FORMATTER, TEST_HOST, TEST_PORT, TEST_IDS.get(i), "offsets/current")));
+      futures.add(client.getCurrentOffsetsAsync(TEST_IDS.get(i), false));
+    }
+
+    List<Map<Integer, Integer>> responses = Futures.allAsList(futures).get();
+
+    verifyAll();
+    List<Request> requests = captured.getValues();
+
+    Assert.assertEquals(numRequests, requests.size());
+    Assert.assertEquals(numRequests, responses.size());
+    for (int i = 0; i < numRequests; i++) {
+      Assert.assertEquals(HttpMethod.GET, requests.get(i).getMethod());
+      Assert.assertTrue("unexpectedURL", expectedUrls.contains(requests.get(i).getUrl()));
+      Assert.assertEquals(Maps.newLinkedHashMap(ImmutableMap.of(0, 1)), responses.get(i));
+    }
+  }
+
+  @Test
+  public void testGetEndOffsetsAsync() throws Exception
+  {
+    final int numRequests = TEST_IDS.size();
+    Capture<Request> captured = Capture.newInstance(CaptureType.ALL);
+    expect(responseHolder.getStatus()).andReturn(HttpResponseStatus.OK).anyTimes();
+    expect(responseHolder.getContent()).andReturn("{\"0\":\"1\"}").anyTimes();
+    expect(httpClient.go(capture(captured), anyObject(FullResponseHandler.class), eq(TEST_HTTP_TIMEOUT))).andReturn(
+        Futures.immediateFuture(responseHolder)
+    ).times(numRequests);
+    replayAll();
+
+    List<URL> expectedUrls = Lists.newArrayList();
+    List<ListenableFuture<Map<Integer, Integer>>> futures = Lists.newArrayList();
+    for (int i = 0; i < numRequests; i++) {
+      expectedUrls.add(new URL(String.format(URL_FORMATTER, TEST_HOST, TEST_PORT, TEST_IDS.get(i), "offsets/end")));
+      futures.add(client.getEndOffsetsAsync(TEST_IDS.get(i)));
+    }
+
+    List<Map<Integer, Integer>> responses = Futures.allAsList(futures).get();
+
+    verifyAll();
+    List<Request> requests = captured.getValues();
+
+    Assert.assertEquals(numRequests, requests.size());
+    Assert.assertEquals(numRequests, responses.size());
+    for (int i = 0; i < numRequests; i++) {
+      Assert.assertEquals(HttpMethod.GET, requests.get(i).getMethod());
+      Assert.assertTrue("unexpectedURL", expectedUrls.contains(requests.get(i).getUrl()));
+      Assert.assertEquals(Maps.newLinkedHashMap(ImmutableMap.of(0, 1)), responses.get(i));
+    }
+  }
+
+  @Test
+  public void testSetEndOffsetsAsync() throws Exception
+  {
+    final Map<Integer, Integer> endOffsets = ImmutableMap.of(0, 15, 1, 120);
+    final int numRequests = TEST_IDS.size();
+    Capture<Request> captured = Capture.newInstance(CaptureType.ALL);
+    expect(responseHolder.getStatus()).andReturn(HttpResponseStatus.OK).anyTimes();
+    expect(httpClient.go(capture(captured), anyObject(FullResponseHandler.class), eq(TEST_HTTP_TIMEOUT))).andReturn(
+        Futures.immediateFuture(responseHolder)
+    ).times(numRequests);
+    replayAll();
+
+    List<URL> expectedUrls = Lists.newArrayList();
+    List<ListenableFuture<Boolean>> futures = Lists.newArrayList();
+    for (int i = 0; i < numRequests; i++) {
+      expectedUrls.add(new URL(String.format(URL_FORMATTER, TEST_HOST, TEST_PORT, TEST_IDS.get(i), "offsets/end")));
+      futures.add(client.setEndOffsetsAsync(TEST_IDS.get(i), endOffsets));
+    }
+
+    List<Boolean> responses = Futures.allAsList(futures).get();
+
+    verifyAll();
+    List<Request> requests = captured.getValues();
+
+    Assert.assertEquals(numRequests, requests.size());
+    Assert.assertEquals(numRequests, responses.size());
+    for (int i = 0; i < numRequests; i++) {
+      Assert.assertEquals(HttpMethod.POST, requests.get(i).getMethod());
+      Assert.assertTrue("unexpectedURL", expectedUrls.contains(requests.get(i).getUrl()));
+      Assert.assertTrue(responses.get(i));
+    }
+  }
+
+  @Test
+  public void testSetEndOffsetsAsyncWithResume() throws Exception
+  {
+    final Map<Integer, Integer> endOffsets = ImmutableMap.of(0, 15, 1, 120);
+    final int numRequests = TEST_IDS.size();
+    Capture<Request> captured = Capture.newInstance(CaptureType.ALL);
+    expect(responseHolder.getStatus()).andReturn(HttpResponseStatus.OK).anyTimes();
+    expect(httpClient.go(capture(captured), anyObject(FullResponseHandler.class), eq(TEST_HTTP_TIMEOUT))).andReturn(
+        Futures.immediateFuture(responseHolder)
+    ).times(numRequests);
+    replayAll();
+
+    List<URL> expectedUrls = Lists.newArrayList();
+    List<ListenableFuture<Boolean>> futures = Lists.newArrayList();
+    for (int i = 0; i < numRequests; i++) {
+      expectedUrls.add(
+          new URL(
+              String.format(
+                  URL_FORMATTER,
+                  TEST_HOST,
+                  TEST_PORT,
+                  TEST_IDS.get(i),
+                  "offsets/end?resume=true"
+              )
+          )
+      );
+      futures.add(client.setEndOffsetsAsync(TEST_IDS.get(i), endOffsets, true));
+    }
+
+    List<Boolean> responses = Futures.allAsList(futures).get();
+
+    verifyAll();
+    List<Request> requests = captured.getValues();
+
+    Assert.assertEquals(numRequests, requests.size());
+    Assert.assertEquals(numRequests, responses.size());
+    for (int i = 0; i < numRequests; i++) {
+      Assert.assertEquals(HttpMethod.POST, requests.get(i).getMethod());
+      Assert.assertTrue("unexpectedURL", expectedUrls.contains(requests.get(i).getUrl()));
+      Assert.assertTrue(responses.get(i));
+    }
+  }
 
   private class TestableJDBCIndexTaskClient extends JDBCIndexTaskClient
   {

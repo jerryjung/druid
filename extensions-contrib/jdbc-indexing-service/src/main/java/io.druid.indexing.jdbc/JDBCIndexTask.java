@@ -25,17 +25,8 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.annotations.VisibleForTesting;
-import com.google.common.base.Function;
-import com.google.common.base.Joiner;
-import com.google.common.base.Optional;
-import com.google.common.base.Preconditions;
-import com.google.common.base.Supplier;
-import com.google.common.base.Throwables;
-import com.google.common.collect.ImmutableList;
-import com.google.common.collect.ImmutableMap;
-import com.google.common.collect.Iterables;
-import com.google.common.collect.Lists;
-import com.google.common.collect.Maps;
+import com.google.common.base.*;
+import com.google.common.collect.*;
 import com.google.common.primitives.Ints;
 import com.metamx.emitter.EmittingLogger;
 import io.druid.data.input.Committer;
@@ -54,22 +45,13 @@ import io.druid.indexing.common.task.TaskResource;
 import io.druid.java.util.common.ISE;
 import io.druid.java.util.common.guava.Sequence;
 import io.druid.java.util.common.parsers.ParseException;
-import io.druid.query.DruidMetrics;
-import io.druid.query.NoopQueryRunner;
-import io.druid.query.Query;
-import io.druid.query.QueryPlus;
-import io.druid.query.QueryRunner;
+import io.druid.query.*;
 import io.druid.segment.indexing.DataSchema;
 import io.druid.segment.indexing.RealtimeIOConfig;
 import io.druid.segment.realtime.FireDepartment;
 import io.druid.segment.realtime.FireDepartmentMetrics;
 import io.druid.segment.realtime.RealtimeMetricsMonitor;
-import io.druid.segment.realtime.appenderator.Appenderator;
-import io.druid.segment.realtime.appenderator.AppenderatorDriver;
-import io.druid.segment.realtime.appenderator.AppenderatorDriverAddResult;
-import io.druid.segment.realtime.appenderator.Appenderators;
-import io.druid.segment.realtime.appenderator.SegmentsAndMetadata;
-import io.druid.segment.realtime.appenderator.TransactionalSegmentPublisher;
+import io.druid.segment.realtime.appenderator.*;
 import io.druid.segment.realtime.firehose.ChatHandler;
 import io.druid.segment.realtime.firehose.ChatHandlerProvider;
 import io.druid.timeline.DataSegment;
@@ -82,13 +64,7 @@ import org.skife.jdbi.v2.ResultIterator;
 import org.skife.jdbi.v2.StatementContext;
 import org.skife.jdbi.v2.tweak.ResultSetMapper;
 
-import javax.ws.rs.Consumes;
-import javax.ws.rs.DefaultValue;
-import javax.ws.rs.GET;
-import javax.ws.rs.POST;
-import javax.ws.rs.Path;
-import javax.ws.rs.Produces;
-import javax.ws.rs.QueryParam;
+import javax.ws.rs.*;
 import javax.ws.rs.core.MediaType;
 import javax.ws.rs.core.Response;
 import java.sql.ResultSet;
@@ -105,17 +81,9 @@ import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 
-import static java.sql.Types.BIGINT;
-import static java.sql.Types.DECIMAL;
-import static java.sql.Types.DOUBLE;
-import static java.sql.Types.FLOAT;
-import static java.sql.Types.INTEGER;
-import static java.sql.Types.NUMERIC;
-import static java.sql.Types.SMALLINT;
-import static java.sql.Types.TINYINT;
+import static java.sql.Types.*;
 
-public class JDBCIndexTask extends AbstractTask implements ChatHandler
-{
+public class JDBCIndexTask extends AbstractTask implements ChatHandler {
   public static final long PAUSE_FOREVER = -1L;
   private static final EmittingLogger log = new EmittingLogger(JDBCIndexTask.class);
   private static final String TYPE = "index_jdbc";
@@ -184,8 +152,7 @@ public class JDBCIndexTask extends AbstractTask implements ChatHandler
       @JsonProperty("ioConfig") JDBCIOConfig ioConfig,
       @JsonProperty("context") Map<String, Object> context,
       @JacksonInject ChatHandlerProvider chatHandlerProvider
-  )
-  {
+  ) {
     super(
         id == null ? makeTaskId(dataSchema.getDataSource(), RANDOM.nextInt()) : id,
         String.format("%s_%s", TYPE, dataSchema.getDataSource()),
@@ -199,11 +166,10 @@ public class JDBCIndexTask extends AbstractTask implements ChatHandler
     this.tuningConfig = Preconditions.checkNotNull(tuningConfig, "tuningConfig");
     this.ioConfig = Preconditions.checkNotNull(ioConfig, "ioConfig");
     this.chatHandlerProvider = Optional.fromNullable(chatHandlerProvider);
-    this.endOffsets.putAll(ioConfig.getPartitions().getOffsetMaps());
+    this.endOffsets.putAll(ioConfig.getJdbcOffsets().getOffsetMaps());
   }
 
-  private static String makeTaskId(String dataSource, int randomBits)
-  {
+  private static String makeTaskId(String dataSource, int randomBits) {
     final StringBuilder suffix = new StringBuilder(8);
     for (int i = 0; i < Ints.BYTES * 2; ++i) {
       suffix.append((char) ('a' + ((randomBits >>> (i * 4)) & 0x0F)));
@@ -212,44 +178,37 @@ public class JDBCIndexTask extends AbstractTask implements ChatHandler
   }
 
   @VisibleForTesting
-  void setPollRetryMs(long retryMs)
-  {
+  void setPollRetryMs(long retryMs) {
     this.pollRetryMs = retryMs;
   }
 
   @Override
-  public String getType()
-  {
+  public String getType() {
     return TYPE;
   }
 
   @Override
-  public boolean isReady(TaskActionClient taskActionClient) throws Exception
-  {
+  public boolean isReady(TaskActionClient taskActionClient) throws Exception {
     return true;
   }
 
   @JsonProperty
-  public DataSchema getDataSchema()
-  {
+  public DataSchema getDataSchema() {
     return dataSchema;
   }
 
   @JsonProperty
-  public JDBCTuningConfig getTuningConfig()
-  {
+  public JDBCTuningConfig getTuningConfig() {
     return tuningConfig;
   }
 
   @JsonProperty("ioConfig")
-  public JDBCIOConfig getIOConfig()
-  {
+  public JDBCIOConfig getIOConfig() {
     return ioConfig;
   }
 
   @Override
-  public TaskStatus run(final TaskToolbox toolbox) throws Exception
-  {
+  public TaskStatus run(final TaskToolbox toolbox) throws Exception {
     log.info("Starting up!");
     startTime = DateTime.now();
     mapper = toolbox.getObjectMapper();
@@ -301,7 +260,7 @@ public class JDBCIndexTask extends AbstractTask implements ChatHandler
       // Start up, set up initial offsets.
       final Object restoredMetadata = driver.startJob();
       if (restoredMetadata == null) {
-        nextOffsets.putAll(ioConfig.getPartitions().getOffsetMaps());
+        nextOffsets.putAll(ioConfig.getJdbcOffsets().getOffsetMaps());
       } else {
         final Map<String, Object> restoredMetadataMap = (Map) restoredMetadata;
         final JDBCOffsets restoredNextPartitions = toolbox.getObjectMapper().convertValue(
@@ -320,19 +279,11 @@ public class JDBCIndexTask extends AbstractTask implements ChatHandler
           );
         }
 
-        if (!nextOffsets.equals(ioConfig.getPartitions().getOffsetMaps())) {
+        if (!nextOffsets.equals(ioConfig.getJdbcOffsets().getOffsetMaps())) {
           throw new ISE(
               "WTF?! Restored partitions[%s] but expected partitions[%s]",
               nextOffsets,
-              ioConfig.getPartitions().getOffsetMaps()
-          );
-        }
-
-        if (!nextOffsets.equals(ioConfig.getPartitions().getOffsetMaps())) {
-          throw new ISE(
-              "WTF?! Restored partitions[%s] but expected partitions[%s]",
-              nextOffsets,
-              ioConfig.getPartitions().getOffsetMaps()
+              ioConfig.getJdbcOffsets().getOffsetMaps()
           );
         }
       }
@@ -343,52 +294,42 @@ public class JDBCIndexTask extends AbstractTask implements ChatHandler
       sequenceNames.put(nextOffsets, String.format("%s_%s", ioConfig.getBaseSequenceName(), nextOffsets));
 
       // Set up committer.
-      final Supplier<Committer> committerSupplier = new Supplier<Committer>()
-      {
+      final Supplier<Committer> committerSupplier = new Supplier<Committer>() {
         @Override
-        public Committer get()
-        {
+        public Committer get() {
           final Map<Integer, Integer> snapshot = ImmutableMap.copyOf(nextOffsets);
 
-          return new Committer()
-          {
+          return new Committer() {
             @Override
-            public Object getMetadata()
-            {
+            public Object getMetadata() {
               return ImmutableMap.of(
                   METADATA_NEXT_PARTITIONS, new JDBCOffsets(
-                      ioConfig.getPartitions().getTable(),
-                      snapshot,
-                      ioConfig.getPartitions().getInterval()
+                      ioConfig.getJdbcOffsets().getTable(),
+                      snapshot
                   )
               );
 
             }
 
             @Override
-            public void run()
-            {
+            public void run() {
               // Do nothing.
             }
           };
         }
       };
-
       status = Status.READING;
       try {
-        Map<Integer, Integer> assignment = nextOffsets;
-        boolean stillReading = !assignment.isEmpty();
         final String query = (ioConfig.getQuery() != null)
-                             ? ioConfig.getQuery()
-                             : makeQuery(ioConfig.getColumns(), ioConfig.getPartitions());
+            ? ioConfig.getQuery()
+            : makeQuery(ioConfig.getColumns(), ioConfig.getJdbcOffsets());
         org.skife.jdbi.v2.Query<Map<String, Object>> dbiQuery = handle.createQuery(query);
 
         final ResultIterator<InputRow> rowIterator = dbiQuery.map(
-            new ResultSetMapper<InputRow>()
-            {
+            new ResultSetMapper<InputRow>() {
               List<String> queryColumns = (ioConfig.getColumns() == null)
-                                          ? Lists.<String>newArrayList()
-                                          : ioConfig.getColumns();
+                  ? Lists.<String>newArrayList()
+                  : ioConfig.getColumns();
               List<Boolean> columnIsNumeric = Lists.newArrayList();
 
               @Override
@@ -396,8 +337,7 @@ public class JDBCIndexTask extends AbstractTask implements ChatHandler
                   final int index,
                   final ResultSet r,
                   final StatementContext ctx
-              ) throws SQLException
-              {
+              ) throws SQLException {
                 try {
                   if (queryColumns.size() == 0) {
                     ResultSetMetaData metadata = r.getMetaData();
@@ -457,8 +397,7 @@ public class JDBCIndexTask extends AbstractTask implements ChatHandler
                   }
                   return parser.parse(columnMap);
 
-                }
-                catch (IllegalArgumentException e) {
+                } catch (IllegalArgumentException e) {
                   throw new SQLException(e);
                 }
               }
@@ -466,13 +405,11 @@ public class JDBCIndexTask extends AbstractTask implements ChatHandler
         ).iterator();
 
         final String sequenceName = sequenceNames.get(nextOffsets); //TODO::: check data
-
         while (rowIterator.hasNext()) {
           InputRow row = rowIterator.next();
           try {
             if (!ioConfig.getMinimumMessageTime().isPresent() ||
                 !ioConfig.getMinimumMessageTime().get().isAfter(row.getTimestamp())) {
-
               final AppenderatorDriverAddResult addResult = driver.add(
                   row,
                   sequenceName,
@@ -496,9 +433,7 @@ public class JDBCIndexTask extends AbstractTask implements ChatHandler
             } else {
               fireDepartmentMetrics.incrementThrownAway();
             }
-
-          }
-          catch (ParseException e) {
+          } catch (ParseException e) {
             if (tuningConfig.isReportParseExceptions()) {
               throw e;
             } else {
@@ -511,18 +446,15 @@ public class JDBCIndexTask extends AbstractTask implements ChatHandler
               fireDepartmentMetrics.incrementUnparseable();
             }
           }
-          org.skife.jdbi.v2.Query<Map<String, Object>> maxItemQuery = handle.createQuery(makeMaxQuery(ioConfig.getPartitions()));
+          org.skife.jdbi.v2.Query<Map<String, Object>> maxItemQuery = handle.createQuery(makeMaxQuery(ioConfig.getJdbcOffsets()));
           Map<String, Object> map = maxItemQuery.list(1).get(0);
-          long currOffset = maxItemQuery != null ? (long)maxItemQuery.list(1).get(0).get("MAX") : 0;
-          nextOffsets.put(
-              (int)currOffset,
-              (int)currOffset + ioConfig.getPartitions().getInterval()
-          ); //TODO:::check set interval value
-
+          long currOffset = maxItemQuery != null ? (long) maxItemQuery.list(1).get(0).get("MAX") : 0;
+          nextOffsets.replace(
+              (int) currOffset,
+              (int) currOffset + ioConfig.getInterval()
+          );
         }
-
-      }
-      finally {
+      } finally {
         driver.persist(committerSupplier.get()); // persist pending data
       }
       synchronized (statusLock) {
@@ -549,8 +481,8 @@ public class JDBCIndexTask extends AbstractTask implements ChatHandler
         if (ioConfig.isUseTransaction()) {
           action = new SegmentTransactionalInsertAction(
               segments,
-              new JDBCDataSourceMetadata(ioConfig.getPartitions()),
-              new JDBCDataSourceMetadata(ioConfig.getPartitions()) //TODO::: Check Values
+              new JDBCDataSourceMetadata(ioConfig.getJdbcOffsets()),
+              new JDBCDataSourceMetadata(ioConfig.getJdbcOffsets()) //TODO::: Check Values
           );
         } else {
           action = new SegmentTransactionalInsertAction(segments, null, null);
@@ -572,10 +504,10 @@ public class JDBCIndexTask extends AbstractTask implements ChatHandler
       final SegmentsAndMetadata handedOff;
       if (tuningConfig.getHandoffConditionTimeout() == 0) {
         handedOff = driver.registerHandoff(published)
-                          .get();
+            .get();
       } else {
         handedOff = driver.registerHandoff(published)
-                          .get(tuningConfig.getHandoffConditionTimeout(), TimeUnit.MILLISECONDS);
+            .get(tuningConfig.getHandoffConditionTimeout(), TimeUnit.MILLISECONDS);
       }
 
       if (handedOff == null) {
@@ -586,11 +518,9 @@ public class JDBCIndexTask extends AbstractTask implements ChatHandler
             Joiner.on(", ").join(
                 Iterables.transform(
                     handedOff.getSegments(),
-                    new Function<DataSegment, String>()
-                    {
+                    new Function<DataSegment, String>() {
                       @Override
-                      public String apply(DataSegment input)
-                      {
+                      public String apply(DataSegment input) {
                         return input.getIdentifier();
                       }
                     }
@@ -600,9 +530,7 @@ public class JDBCIndexTask extends AbstractTask implements ChatHandler
         );
       }
 
-    }
-
-    catch (InterruptedException |
+    } catch (InterruptedException |
         RejectedExecutionException e
         )
 
@@ -620,9 +548,7 @@ public class JDBCIndexTask extends AbstractTask implements ChatHandler
       }
 
       log.info("The task was asked to stop before completing");
-    }
-
-    finally
+    } finally
 
     {
       if (chatHandlerProvider.isPresent()) {
@@ -641,16 +567,14 @@ public class JDBCIndexTask extends AbstractTask implements ChatHandler
   }
 
   @Override
-  public boolean canRestore()
-  {
+  public boolean canRestore() {
     return true;
   }
 
   @POST
   @Path("/stop")
   @Override
-  public void stopGracefully()
-  {
+  public void stopGracefully() {
     log.info("Stopping gracefully (status: [%s])", status);
     stopRequested = true;
 
@@ -668,8 +592,7 @@ public class JDBCIndexTask extends AbstractTask implements ChatHandler
             pauseRequested = false;
             shouldResume.signalAll();
           }
-        }
-        finally {
+        } finally {
           pauseLock.unlock();
         }
       } else {
@@ -681,33 +604,28 @@ public class JDBCIndexTask extends AbstractTask implements ChatHandler
       if (pollRetryLock.tryLock(LOCK_ACQUIRE_TIMEOUT_SECONDS, TimeUnit.SECONDS)) {
         try {
           isAwaitingRetry.signalAll();
-        }
-        finally {
+        } finally {
           pollRetryLock.unlock();
         }
       } else {
         log.warn("While stopping: failed to acquire pollRetryLock before timeout, interrupting run thread");
         runThread.interrupt();
       }
-    }
-    catch (Exception e) {
+    } catch (Exception e) {
       Throwables.propagate(e);
     }
   }
 
   @Override
-  public <T> QueryRunner<T> getQueryRunner(Query<T> query)
-  {
+  public <T> QueryRunner<T> getQueryRunner(Query<T> query) {
     if (appenderator == null) {
       // Not yet initialized, no data yet, just return a noop runner.
       return new NoopQueryRunner<>();
     }
 
-    return new QueryRunner<T>()
-    {
+    return new QueryRunner<T>() {
       @Override
-      public Sequence<T> run(final QueryPlus<T> queryPlus, final Map<String, Object> responseContext)
-      {
+      public Sequence<T> run(final QueryPlus<T> queryPlus, final Map<String, Object> responseContext) {
         return queryPlus.run(appenderator, responseContext);
       }
     };
@@ -716,24 +634,21 @@ public class JDBCIndexTask extends AbstractTask implements ChatHandler
   @GET
   @Path("/status")
   @Produces(MediaType.APPLICATION_JSON)
-  public Status getStatus()
-  {
+  public Status getStatus() {
     return status;
   }
 
   @GET
   @Path("/offsets/current")
   @Produces(MediaType.APPLICATION_JSON)
-  public Map<Integer, Integer> getCurrentOffsets()
-  {
+  public Map<Integer, Integer> getCurrentOffsets() {
     return nextOffsets;
   }
 
   @GET
   @Path("/offsets/end")
   @Produces(MediaType.APPLICATION_JSON)
-  public Map<Integer, Integer> getEndOffsets()
-  {
+  public Map<Integer, Integer> getEndOffsets() {
     return endOffsets;
   }
 
@@ -746,35 +661,39 @@ public class JDBCIndexTask extends AbstractTask implements ChatHandler
       @QueryParam("resume")
       @DefaultValue("false")
       final boolean resume
-  ) throws InterruptedException
-  {
+  ) throws InterruptedException {
     if (offsets == null) {
       return Response.status(Response.Status.BAD_REQUEST)
-                     .entity("Request body must contain a map of { partition:endOffset }")
-                     .build();
+          .entity("Request body must contain a map of { partition:endOffset }")
+          .build();
     } else if (endOffsets != offsets) {
-      return Response.status(Response.Status.BAD_REQUEST)
-                     .entity(
-                         String.format(
-                             "Request contains partitions not being handled by this task, my partitions: %s",
-                             endOffsets
-                         )
-                     )
-                     .build();
+
+
+      for (Map.Entry<Integer, Integer> entry : offsets.entrySet()) {
+        if (entry.getValue().compareTo(nextOffsets.get(entry.getKey())) < 0) {
+          return Response.status(Response.Status.BAD_REQUEST)
+              .entity(
+                  String.format(
+                      "Request contains partitions not being handled by this task, my partitions: %s",
+                      endOffsets
+                  )
+              )
+              .build();
+        }
+      }
     }
 
     pauseLock.lockInterruptibly();
     try {
       if (!isPaused()) {
         return Response.status(Response.Status.BAD_REQUEST)
-                       .entity("Task must be paused before changing the end offsets")
-                       .build();
+            .entity("Task must be paused before changing the end offsets")
+            .build();
       }
 
-      endOffsets = offsets;
+      endOffsets.putAll(offsets);
       log.info("endOffsets changed to %s", endOffsets);
-    }
-    finally {
+    } finally {
       pauseLock.unlock();
     }
 
@@ -789,7 +708,6 @@ public class JDBCIndexTask extends AbstractTask implements ChatHandler
    * Signals the ingestion loop to pause.
    *
    * @param timeout how long to pause for before resuming in milliseconds, <= 0 means indefinitely
-   *
    * @return one of the following Responses: 400 Bad Request if the task has started publishing; 202 Accepted if the
    * method has timed out and returned before the task has paused; 200 OK with a map of the current partition offsets
    * in the response body if the task successfully paused
@@ -802,12 +720,11 @@ public class JDBCIndexTask extends AbstractTask implements ChatHandler
       @DefaultValue("0")
       final long timeout
   )
-      throws InterruptedException
-  {
+      throws InterruptedException {
     if (!(status == Status.PAUSED || status == Status.READING)) {
       return Response.status(Response.Status.BAD_REQUEST)
-                     .entity(String.format("Can't pause, task is not in a pausable state (state: [%s])", status))
-                     .build();
+          .entity(String.format("Can't pause, task is not in a pausable state (state: [%s])", status))
+          .build();
     }
 
     pauseLock.lockInterruptibly();
@@ -818,8 +735,7 @@ public class JDBCIndexTask extends AbstractTask implements ChatHandler
       pollRetryLock.lockInterruptibly();
       try {
         isAwaitingRetry.signalAll();
-      }
-      finally {
+      } finally {
         pollRetryLock.unlock();
       }
 
@@ -831,28 +747,25 @@ public class JDBCIndexTask extends AbstractTask implements ChatHandler
       while (!isPaused()) {
         if (nanos <= 0L) {
           return Response.status(Response.Status.ACCEPTED)
-                         .entity("Request accepted but task has not yet paused")
-                         .build();
+              .entity("Request accepted but task has not yet paused")
+              .build();
         }
         nanos = hasPaused.awaitNanos(nanos);
       }
-    }
-    finally {
+    } finally {
       pauseLock.unlock();
     }
 
     try {
       return Response.ok().entity(mapper.writeValueAsString(getCurrentOffsets())).build();
-    }
-    catch (JsonProcessingException e) {
+    } catch (JsonProcessingException e) {
       throw Throwables.propagate(e);
     }
   }
 
   @POST
   @Path("/resume")
-  public void resume() throws InterruptedException
-  {
+  public void resume() throws InterruptedException {
     pauseLock.lockInterruptibly();
     try {
       pauseRequested = false;
@@ -865,8 +778,7 @@ public class JDBCIndexTask extends AbstractTask implements ChatHandler
         }
         nanos = shouldResume.awaitNanos(nanos);
       }
-    }
-    finally {
+    } finally {
       pauseLock.unlock();
     }
   }
@@ -874,29 +786,25 @@ public class JDBCIndexTask extends AbstractTask implements ChatHandler
   @GET
   @Path("/time/start")
   @Produces(MediaType.APPLICATION_JSON)
-  public DateTime getStartTime()
-  {
+  public DateTime getStartTime() {
     return startTime;
   }
 
   @VisibleForTesting
-  FireDepartmentMetrics getFireDepartmentMetrics()
-  {
+  FireDepartmentMetrics getFireDepartmentMetrics() {
     return fireDepartmentMetrics;
   }
 
-  private boolean isPaused()
-  {
+  private boolean isPaused() {
     return status == Status.PAUSED;
   }
 
-  private Appenderator newAppenderator(FireDepartmentMetrics metrics, TaskToolbox toolbox)
-  {
+  private Appenderator newAppenderator(FireDepartmentMetrics metrics, TaskToolbox toolbox) {
     final int maxRowsInMemoryPerPartition = (tuningConfig.getMaxRowsInMemory());
     return Appenderators.createRealtime(
         dataSchema,
         tuningConfig.withBasePersistDirectory(toolbox.getPersistDir())
-                    .withMaxRowsInMemory(maxRowsInMemoryPerPartition),
+            .withMaxRowsInMemory(maxRowsInMemoryPerPartition),
         metrics,
         toolbox.getSegmentPusher(),
         toolbox.getObjectMapper(),
@@ -915,8 +823,7 @@ public class JDBCIndexTask extends AbstractTask implements ChatHandler
       final Appenderator appenderator,
       final TaskToolbox toolbox,
       final FireDepartmentMetrics metrics
-  )
-  {
+  ) {
     return new AppenderatorDriver(
         appenderator,
         new ActionBasedSegmentAllocator(toolbox.getTaskActionClient(), dataSchema),
@@ -943,8 +850,7 @@ public class JDBCIndexTask extends AbstractTask implements ChatHandler
    *
    * @return true if a pause request was handled, false otherwise
    */
-  private boolean possiblyPause(Set<Integer> assignment) throws InterruptedException
-  {
+  private boolean possiblyPause(Set<Integer> assignment) throws InterruptedException {
     pauseLock.lockInterruptibly();
     try {
       if (ioConfig.isPauseAfterRead() && assignment.isEmpty()) {
@@ -979,46 +885,42 @@ public class JDBCIndexTask extends AbstractTask implements ChatHandler
         log.info("Ingestion loop resumed");
         return true;
       }
-    }
-    finally {
+    } finally {
       pauseLock.unlock();
     }
 
     return false;
   }
 
-  private String makeQuery(List<String> requiredFields, JDBCOffsets partition)
-  {
+  private String makeQuery(List<String> requiredFields, JDBCOffsets partition) {
 
     if (requiredFields == null) {
       return new StringBuilder("SELECT *  FROM ").append(ioConfig.getTableName()).toString();
     }
     return new StringBuilder("SELECT ").append(StringUtils.join(requiredFields, ','))
-                                       .append(" from ")
-                                       .append(ioConfig.getTableName())
-                                       .append(" where ")
-                                       .append(" id >="
-                                               + partition.getOffsetMaps().keySet().toArray()[0]
-                                               + " and id<="
-                                               + partition.getOffsetMaps().values().toArray()[0])
-                                       .toString();
+        .append(" from ")
+        .append(ioConfig.getTableName())
+        .append(" where ")
+        .append(" id >="
+            + partition.getOffsetMaps().keySet().toArray()[0]
+            + " and id<="
+            + partition.getOffsetMaps().values().toArray()[0])
+        .toString();
   }
 
-  private String makeMaxQuery(JDBCOffsets partition)
-  {
+  private String makeMaxQuery(JDBCOffsets partition) {
     return new StringBuilder("SELECT ").append("MAX(ID) AS MAX")
-                                       .append(" FROM ")
-                                       .append(ioConfig.getTableName())
-                                       .append(" WHERE ")
-                                       .append(" id >="
-                                               + partition.getOffsetMaps().keySet().toArray()[0]
-                                               + " and id<="
-                                               + partition.getOffsetMaps().values().toArray()[0])
-                                       .toString();
+        .append(" FROM ")
+        .append(ioConfig.getTableName())
+        .append(" WHERE ")
+        .append(" id >="
+            + partition.getOffsetMaps().keySet().toArray()[0]
+            + " and id<="
+            + partition.getOffsetMaps().values().toArray()[0])
+        .toString();
   }
 
-  private void verifyParserSpec(ParseSpec parseSpec, List<String> storedColumns) throws IllegalArgumentException
-  {
+  private void verifyParserSpec(ParseSpec parseSpec, List<String> storedColumns) throws IllegalArgumentException {
     String tsColumn = parseSpec.getTimestampSpec().getTimestampColumn();
     Preconditions.checkArgument(
         storedColumns.contains(tsColumn),
@@ -1033,8 +935,7 @@ public class JDBCIndexTask extends AbstractTask implements ChatHandler
     }
   }
 
-  public enum Status
-  {
+  public enum Status {
     NOT_STARTED,
     STARTING,
     READING,

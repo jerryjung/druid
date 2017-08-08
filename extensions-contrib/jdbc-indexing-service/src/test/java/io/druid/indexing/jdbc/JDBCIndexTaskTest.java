@@ -290,12 +290,13 @@ public class JDBCIndexTaskTest
             "druid",
             uri,
             "com.mysql.jdbc.Driver",
-            new JDBCOffsets(tableName, offsets, interval),
+            new JDBCOffsets(tableName, offsets),
             true,
             false,
             null,
             "select * from " + tableName + " limit 10",
-            columns
+            columns,
+            interval
         ),
         null,
         null
@@ -339,12 +340,13 @@ public class JDBCIndexTaskTest
             "druid",
             uri,
             "com.mysql.jdbc.Driver",
-            new JDBCOffsets(tableName, offsets, interval),
+            new JDBCOffsets(tableName, offsets),
             true,
             false,
             null,
             "select * from " + tableName + " limit 0",
-            columns
+            columns,
+            interval
         ),
         null,
         null
@@ -381,12 +383,13 @@ public class JDBCIndexTaskTest
             "druid",
             uri,
             "com.mysql.jdbc.Driver",
-            new JDBCOffsets(tableName, offsets, interval),
+            new JDBCOffsets(tableName, offsets),
             true,
             false,
             null,
             null,
-            columns
+            columns,
+            interval
         ),
         null,
         null
@@ -433,12 +436,13 @@ public class JDBCIndexTaskTest
             "druid",
             uri,
             "com.mysql.jdbc.Driver",
-            new JDBCOffsets(tableName, offsets, interval),
+            new JDBCOffsets(tableName, offsets),
             true,
             false,
             null,
             "select * from " + tableName + " limit 1",
-            columns
+            columns,
+            interval
         ),
         null,
         null
@@ -480,12 +484,13 @@ public class JDBCIndexTaskTest
             "druid",
             uri,
             "com.mysql.jdbc.Driver",
-            new JDBCOffsets(tableName, offsets, interval),
+            new JDBCOffsets(tableName, offsets),
             true,
             false,
             null,
             "select * from " + tableName + " limit 0",
-            columns
+            columns,
+            interval
         ),
         null,
         null
@@ -518,12 +523,13 @@ public class JDBCIndexTaskTest
             "druid",
             uri,
             "com.mysql.jdbc.Driver",
-            new JDBCOffsets(tableName, offsets, interval),
+            new JDBCOffsets(tableName, offsets),
             true,
             false,
             null,
             "select * from " + tableName + " where id =1  ",
-            columns
+            columns,
+            interval
         ),
         null,
         null
@@ -537,12 +543,13 @@ public class JDBCIndexTaskTest
             "druid",
             uri,
             "com.mysql.jdbc.Driver",
-            new JDBCOffsets(tableName, offsets, interval),
+            new JDBCOffsets(tableName, offsets),
             true,
             false,
             null,
             "select * from " + tableName + " where id =1 ",
-            columns
+            columns,
+            interval
         ),
         null,
         null
@@ -571,7 +578,7 @@ public class JDBCIndexTaskTest
     Assert.assertEquals(ImmutableSet.of(desc1), publishedDescriptors());
 
     Assert.assertEquals(
-        new JDBCDataSourceMetadata(new JDBCOffsets(tableName, new HashMap(0, 10), interval)),
+        new JDBCDataSourceMetadata(new JDBCOffsets(tableName, new HashMap(0, 10))),
         metadataStorageCoordinator.getDataSourceMetadata(DATA_SCHEMA.getDataSource())
     );
 
@@ -591,12 +598,13 @@ public class JDBCIndexTaskTest
             "druid",
             uri,
             "com.mysql.jdbc.Driver",
-            new JDBCOffsets(tableName, offsets, interval),
+            new JDBCOffsets(tableName, offsets),
             true,
             false,
             null,
             null,
-            columns
+            columns,
+            interval
         ),
         null,
         null
@@ -610,12 +618,13 @@ public class JDBCIndexTaskTest
             "druid",
             uri,
             "com.mysql.jdbc.Driver",
-            new JDBCOffsets(tableName, offsets, interval),
+            new JDBCOffsets(tableName, offsets),
             true,
             false,
             null,
             null,
-            columns
+            columns,
+            interval
         ),
         null,
         null
@@ -647,7 +656,7 @@ public class JDBCIndexTaskTest
     Assert.assertEquals(ImmutableSet.of(desc1, desc2, desc3), publishedDescriptors());
 
     Assert.assertEquals(
-        new JDBCDataSourceMetadata(new JDBCOffsets(tableName, new HashMap<Integer, Integer>(0, 10), interval)),
+        new JDBCDataSourceMetadata(new JDBCOffsets(tableName, new HashMap<Integer, Integer>(0, 10))),
         metadataStorageCoordinator.getDataSourceMetadata(DATA_SCHEMA.getDataSource())
     );
     // Check segments in deep storage
@@ -667,12 +676,13 @@ public class JDBCIndexTaskTest
                                                 "druid",
                                                 uri,
                                                 "com.mysql.jdbc.Driver",
-                                                new JDBCOffsets(tableName, offsets, interval),
+                                                new JDBCOffsets(tableName, offsets),
                                                 false,
                                                 false,
                                                 null,
                                                 "select * from " + tableName + " where id <= 3",
-                                                columns
+                                                columns,
+                                                interval
                                             ),
                                             null,
                                             null
@@ -687,12 +697,13 @@ public class JDBCIndexTaskTest
             "druid",
             uri,
             "com.mysql.jdbc.Driver",
-            new JDBCOffsets(tableName, offsets, interval),
+            new JDBCOffsets(tableName, offsets),
             false,
             false,
             null,
             "select * from " + tableName + " where id > 3 and id <= 6",
-            columns
+            columns,
+            interval
         ),
         null,
         null
@@ -746,12 +757,13 @@ public class JDBCIndexTaskTest
             "druid",
             uri,
             "com.mysql.jdbc.Driver",
-            new JDBCOffsets(tableName, offsets, interval),
+            new JDBCOffsets(tableName, offsets),
             true,
             false,
             null,
             null,
-            columns
+            columns,
+            interval
         ),
         null,
         null
@@ -765,12 +777,13 @@ public class JDBCIndexTaskTest
             "druid",
             uri,
             "com.mysql.jdbc.Driver",
-            new JDBCOffsets(tableName, offsets, interval),
+            new JDBCOffsets(tableName, offsets),
             true,
             false,
             null,
             null,
-            columns
+            columns,
+            interval
         ),
         null,
         null
@@ -823,12 +836,13 @@ public class JDBCIndexTaskTest
             "druid",
             uri,
             "com.mysql.jdbc.Driver",
-            new JDBCOffsets(tableName, offsets, interval),
+            new JDBCOffsets(tableName, offsets),
             true,
             false,
             null,
             "select * from " + tableName + " limit 5",
-            columns
+            columns,
+            interval
         ),
         null,
         true
@@ -894,7 +908,6 @@ public class JDBCIndexTaskTest
             return lock.getInterval().contains(interval);
           }
         }
-        , null
     );
   }
 

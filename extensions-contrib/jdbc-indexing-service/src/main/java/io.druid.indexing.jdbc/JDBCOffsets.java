@@ -28,18 +28,15 @@ public class JDBCOffsets
 {
   private final String table;
   private final Map<Integer, Integer> offsetMaps;
-  private final int interval;
 
   @JsonCreator
   public JDBCOffsets(
       @JsonProperty("table") final String table,
-      @JsonProperty("offsetMaps") final Map<Integer, Integer> offsetMaps,
-      @JsonProperty("interval") final int interval
+      @JsonProperty("offsetMaps") final Map<Integer, Integer> offsetMaps
   )
   {
     this.table = table;
     this.offsetMaps = offsetMaps;
-    this.interval = interval;
 
   }
 
@@ -55,11 +52,6 @@ public class JDBCOffsets
     return offsetMaps;
   }
 
-  @JsonProperty
-  public int getInterval()
-  {
-    return interval;
-  }
 
   @Override
   public String toString()
@@ -67,7 +59,6 @@ public class JDBCOffsets
     return "JDBCOffsets{" +
            "table='" + table + '\'' +
            ", offsetMaps=" + offsetMaps +
-           ", interval=" + interval +
            '}';
   }
 }

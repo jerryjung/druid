@@ -102,7 +102,7 @@ public class JDBCIOConfigTest {
         );
 
         Assert.assertEquals("my-sequence-name", config.getBaseSequenceName());
-        Assert.assertEquals("table", config.getPartitions().getTable());
+        Assert.assertEquals("table", config.getJdbcOffsets().getTable());
         Assert.assertEquals(false, config.isUseTransaction());
         Assert.assertEquals(true, config.isPauseAfterRead());
         Assert.assertEquals(new DateTime("2016-05-31T12:00Z"), config.getMinimumMessageTime().get());

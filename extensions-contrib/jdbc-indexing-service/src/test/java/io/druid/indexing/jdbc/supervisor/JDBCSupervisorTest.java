@@ -69,245 +69,260 @@ import static org.easymock.EasyMock.*;
 
 @RunWith(Parameterized.class)
 public class JDBCSupervisorTest extends EasyMockSupport {
-    private static final ObjectMapper objectMapper = TestHelper.getJsonMapper();
-    private static final String TABLE_PREFIX = "druid_audit";
-    private static final String DATASOURCE = "testDS";
-    private static final int TEST_CHAT_THREADS = 3;
-    private static final long TEST_CHAT_RETRIES = 9L;
-    private static final Period TEST_HTTP_TIMEOUT = new Period("PT10S");
-    private static final Period TEST_SHUTDOWN_TIMEOUT = new Period("PT80S");
-    private static final Map<Integer, Integer> offsets = new HashMap();
-    private static final int interval = 10;
+  private static final ObjectMapper objectMapper = TestHelper.getJsonMapper();
+  private static final String TABLE_PREFIX = "druid_audit";
+  private static final String DATASOURCE = "testDS";
+  private static final int TEST_CHAT_THREADS = 3;
+  private static final long TEST_CHAT_RETRIES = 9L;
+  private static final Period TEST_HTTP_TIMEOUT = new Period("PT10S");
+  private static final Period TEST_SHUTDOWN_TIMEOUT = new Period("PT80S");
+  private static final Map<Integer, Integer> offsets = new HashMap();
+  private static final int interval = 10;
 
-    private static TestingCluster zkServer;
-    private static DataSchema dataSchema;
+  private static TestingCluster zkServer;
+  private static DataSchema dataSchema;
 
-    private final int numThreads;
+  private final int numThreads;
 
-    private JDBCSupervisor supervisor;
-    private JDBCSupervisorTuningConfig tuningConfig;
-    private TaskStorage taskStorage;
-    private TaskMaster taskMaster;
-    private TaskRunner taskRunner;
-    private IndexerMetadataStorageCoordinator indexerMetadataStorageCoordinator;
-    private JDBCIndexTaskClient taskClient;
-    private TaskQueue taskQueue;
-    private String table;
+  private JDBCSupervisor supervisor;
+  private JDBCSupervisorTuningConfig tuningConfig;
+  private TaskStorage taskStorage;
+  private TaskMaster taskMaster;
+  private TaskRunner taskRunner;
+  private IndexerMetadataStorageCoordinator indexerMetadataStorageCoordinator;
+  private JDBCIndexTaskClient taskClient;
+  private TaskQueue taskQueue;
+  private String table;
 
-    private static String getTable() {
-        return TABLE_PREFIX;
-    }
-
-    @Parameterized.Parameters(name = "numThreads = {0}")
-    public static Iterable<Object[]> constructorFeeder() {
-        return ImmutableList.of(new Object[]{1}, new Object[]{8});
-    }
-
-    public JDBCSupervisorTest(int numThreads) {
-        this.numThreads = numThreads;
-    }
-
-    @BeforeClass
-    public static void setupClass() throws Exception {
-        zkServer = new TestingCluster(1);
-        zkServer.start();
-        dataSchema = getDataSchema(DATASOURCE);
-    }
-
-    @Before
-    public void setupTest() throws Exception {
-        taskStorage = createMock(TaskStorage.class);
-        taskMaster = createMock(TaskMaster.class);
-        taskRunner = createMock(TaskRunner.class);
-        indexerMetadataStorageCoordinator = createMock(IndexerMetadataStorageCoordinator.class);
-        taskClient = createMock(JDBCIndexTaskClient.class);
-        taskQueue = createMock(TaskQueue.class);
-
-        tuningConfig = new JDBCSupervisorTuningConfig(
-                1000,
-                50000,
-                new Period("P1Y"),
-                new File("/test"),
-                null,
-                null,
-                true,
-                false,
-                null,
-                null,
-                numThreads,
-                TEST_CHAT_THREADS,
-                TEST_CHAT_RETRIES,
-                TEST_HTTP_TIMEOUT,
-                TEST_SHUTDOWN_TIMEOUT,
-                null
-        );
-
-        table = getTable();
-    }
-
-    @After
-    public void tearDownTest() throws Exception {
-        supervisor = null;
-    }
-
-    @AfterClass
-    public static void tearDownClass() throws IOException {
-        zkServer.stop();
-        zkServer = null;
-    }
-
-    @Test
-    public void testNoInitialState() throws Exception {
-
-        supervisor = getSupervisor(1, 1, "PT1H", null);
-
-        Capture<JDBCIndexTask> captured = Capture.newInstance();
-        expect(taskMaster.getTaskQueue()).andReturn(Optional.of(taskQueue)).anyTimes();
-        expect(taskMaster.getTaskRunner()).andReturn(Optional.of(taskRunner)).anyTimes();
-        expect(taskStorage.getActiveTasks()).andReturn(ImmutableList.<Task>of()).anyTimes();
-        expect(indexerMetadataStorageCoordinator.getDataSourceMetadata(DATASOURCE)).andReturn(
-                new JDBCDataSourceMetadata(
-                        null
-                )
-        ).anyTimes();
-        expect(taskQueue.add(capture(captured))).andReturn(true);
-        taskRunner.registerListener(anyObject(TaskRunnerListener.class), anyObject(Executor.class));
-        replayAll();
-
-        supervisor.start();
-        supervisor.runInternal();
-        verifyAll();
-
-        JDBCIndexTask task = captured.getValue();
-        Assert.assertEquals(dataSchema, task.getDataSchema());
-        Assert.assertEquals(JDBCTuningConfig.copyOf(tuningConfig), task.getTuningConfig());
-
-        JDBCIOConfig taskConfig = task.getIOConfig();
-        Assert.assertEquals("sequenceName-0", taskConfig.getBaseSequenceName());
-        Assert.assertTrue("isUseTransaction", taskConfig.isUseTransaction());
-        Assert.assertFalse("pauseAfterRead", taskConfig.isPauseAfterRead());
-        Assert.assertFalse("minimumMessageTime", taskConfig.getMinimumMessageTime().isPresent());
-
-        Assert.assertEquals(table, taskConfig.getPartitions().getTable());
-        Assert.assertEquals(taskConfig.getPartitions().getOffsetMaps().keySet().toArray()[0], 0);
-        Assert.assertEquals(taskConfig.getPartitions().getOffsetMaps().values().toArray()[0], 10);
-
-    }
+  private static String getTable() {
+    return TABLE_PREFIX;
+  }
 
 
-    @Test
-    public void testNewTaskFromMetadata() throws Exception {
-        supervisor = getSupervisor(1, 1, "PT1H", null);
+  @Parameterized.Parameters(name = "numThreads = {0}")
+  public static Iterable<Object[]> constructorFeeder() {
+    return ImmutableList.of(new Object[]{1}, new Object[]{8});
+  }
 
-        Capture<JDBCIndexTask> captured = Capture.newInstance();
-        expect(taskMaster.getTaskQueue()).andReturn(Optional.of(taskQueue)).anyTimes();
-        expect(taskMaster.getTaskRunner()).andReturn(Optional.of(taskRunner)).anyTimes();
-        expect(taskStorage.getActiveTasks()).andReturn(ImmutableList.<Task>of()).anyTimes();
-        expect(indexerMetadataStorageCoordinator.getDataSourceMetadata(DATASOURCE)).andReturn(
-                new JDBCDataSourceMetadata(
-                        new JDBCOffsets(table, new HashMap(0,10), interval)
-                )
-        ).anyTimes();
-        expect(taskQueue.add(capture(captured))).andReturn(true);
-        taskRunner.registerListener(anyObject(TaskRunnerListener.class), anyObject(Executor.class));
-        replayAll();
+  public JDBCSupervisorTest(int numThreads) {
+    this.numThreads = numThreads;
+  }
 
-        supervisor.start();
-        supervisor.runInternal();
-        verifyAll();
+  @BeforeClass
+  public static void setupClass() throws Exception {
+    zkServer = new TestingCluster(1);
+    zkServer.start();
+    dataSchema = getDataSchema(DATASOURCE);
+  }
 
-        JDBCIndexTask task = captured.getValue();
-        Assert.assertEquals(dataSchema, task.getDataSchema());
-        Assert.assertEquals(JDBCTuningConfig.copyOf(tuningConfig), task.getTuningConfig());
+  @Before
+  public void setupTest() throws Exception {
+    taskStorage = createMock(TaskStorage.class);
+    taskMaster = createMock(TaskMaster.class);
+    taskRunner = createMock(TaskRunner.class);
+    indexerMetadataStorageCoordinator = createMock(IndexerMetadataStorageCoordinator.class);
+    taskClient = createMock(JDBCIndexTaskClient.class);
+    taskQueue = createMock(TaskQueue.class);
 
-        JDBCIOConfig taskConfig = task.getIOConfig();
-        Assert.assertEquals("sequenceName-0", taskConfig.getBaseSequenceName());
-        Assert.assertTrue("isUseTransaction", taskConfig.isUseTransaction());
-        Assert.assertFalse("pauseAfterRead", taskConfig.isPauseAfterRead());
-        Assert.assertFalse("minimumMessageTime", taskConfig.getMinimumMessageTime().isPresent());
+    tuningConfig = new JDBCSupervisorTuningConfig(
+        1000,
+        50000,
+        new Period("P1Y"),
+        new File("/test"),
+        null,
+        null,
+        true,
+        false,
+        null,
+        null,
+        numThreads,
+        TEST_CHAT_THREADS,
+        TEST_CHAT_RETRIES,
+        TEST_HTTP_TIMEOUT,
+        TEST_SHUTDOWN_TIMEOUT,
+        null
+    );
 
-        Assert.assertEquals(table, taskConfig.getPartitions().getTable());
-        Assert.assertEquals(taskConfig.getPartitions().getOffsetMaps().values().toArray()[0], 10);
+    table = getTable();
+  }
 
-    }
+  @After
+  public void tearDownTest() throws Exception {
+    supervisor = null;
+  }
+
+  @AfterClass
+  public static void tearDownClass() throws IOException {
+    zkServer.stop();
+    zkServer = null;
+  }
+
+  @Test
+  public void testNoInitialState() throws Exception {
+
+    supervisor = getSupervisor(1, 1, "PT1H", null);
+
+    Capture<JDBCIndexTask> captured = Capture.newInstance();
+    expect(taskMaster.getTaskQueue()).andReturn(Optional.of(taskQueue)).anyTimes();
+    expect(taskMaster.getTaskRunner()).andReturn(Optional.of(taskRunner)).anyTimes();
+    expect(taskStorage.getActiveTasks()).andReturn(ImmutableList.<Task>of()).anyTimes();
+    expect(indexerMetadataStorageCoordinator.resetDataSourceMetadata(DATASOURCE, new JDBCDataSourceMetadata(
+        new JDBCOffsets(table, offsets)
+    ))).andReturn(true).anyTimes();
+    expect(indexerMetadataStorageCoordinator.getDataSourceMetadata(DATASOURCE)).andReturn(
+        new JDBCDataSourceMetadata(
+            new JDBCOffsets(table, offsets)
+        )
+    ).anyTimes();
+    expect(taskQueue.add(capture(captured))).andReturn(true);
+    taskRunner.registerListener(anyObject(TaskRunnerListener.class), anyObject(Executor.class));
+    replayAll();
+
+    supervisor.start();
+    supervisor.runInternal();
+    verifyAll();
+
+    JDBCIndexTask task = captured.getValue();
+    Assert.assertEquals(dataSchema, task.getDataSchema());
+    Assert.assertEquals(JDBCTuningConfig.copyOf(tuningConfig), task.getTuningConfig());
+
+    JDBCIOConfig taskConfig = task.getIOConfig();
+    Assert.assertEquals("sequenceName-0", taskConfig.getBaseSequenceName());
+    Assert.assertTrue("isUseTransaction", taskConfig.isUseTransaction());
+    Assert.assertFalse("pauseAfterRead", taskConfig.isPauseAfterRead());
+    Assert.assertFalse("minimumMessageTime", taskConfig.getMinimumMessageTime().isPresent());
+
+    Assert.assertEquals(table, taskConfig.getJdbcOffsets().getTable());
+    Assert.assertEquals(taskConfig.getJdbcOffsets().getOffsetMaps().keySet().toArray()[0], 0);
+    Assert.assertEquals(taskConfig.getJdbcOffsets().getOffsetMaps().values().toArray()[0], 10);
+
+  }
 
 
-    @Test
-    public void testSkipOffsetGaps() throws Exception {
-        supervisor = getSupervisor(1, 1, "PT1H", null);
+  @Test
+  public void testNewTaskFromMetadata() throws Exception {
+    supervisor = getSupervisor(1, 1, "PT1H", null);
+    Capture<JDBCIndexTask> captured = Capture.newInstance();
+    expect(taskMaster.getTaskQueue()).andReturn(Optional.of(taskQueue)).anyTimes();
+    expect(taskMaster.getTaskRunner()).andReturn(Optional.of(taskRunner)).anyTimes();
+    expect(taskStorage.getActiveTasks()).andReturn(ImmutableList.<Task>of()).anyTimes();
+    expect(indexerMetadataStorageCoordinator.resetDataSourceMetadata(DATASOURCE, new JDBCDataSourceMetadata(
+        new JDBCOffsets(table, ImmutableMap.of(1, 12))
+    ))).andReturn(true).anyTimes();
+    expect(indexerMetadataStorageCoordinator.getDataSourceMetadata(DATASOURCE)).andReturn(
+        new JDBCDataSourceMetadata(
+            new JDBCOffsets(table, offsets)
+        )
+    ).anyTimes();
+    expect(taskQueue.add(capture(captured))).andReturn(true);
+    taskRunner.registerListener(anyObject(TaskRunnerListener.class), anyObject(Executor.class));
+    replayAll();
 
-        Capture<JDBCIndexTask> captured = Capture.newInstance();
-        expect(taskMaster.getTaskQueue()).andReturn(Optional.of(taskQueue)).anyTimes();
-        expect(taskMaster.getTaskRunner()).andReturn(Optional.of(taskRunner)).anyTimes();
-        expect(taskStorage.getActiveTasks()).andReturn(ImmutableList.<Task>of()).anyTimes();
-        expect(indexerMetadataStorageCoordinator.getDataSourceMetadata(DATASOURCE)).andReturn(
-                new JDBCDataSourceMetadata(
-                        null
-                )
-        ).anyTimes();
-        expect(taskQueue.add(capture(captured))).andReturn(true);
-        taskRunner.registerListener(anyObject(TaskRunnerListener.class), anyObject(Executor.class));
-        replayAll();
+    supervisor.start();
+    supervisor.runInternal();
+    verifyAll();
 
-        supervisor.start();
-        supervisor.runInternal();
-        verifyAll();
+    JDBCIndexTask task = captured.getValue();
+    Assert.assertEquals(dataSchema, task.getDataSchema());
+    Assert.assertEquals(JDBCTuningConfig.copyOf(tuningConfig), task.getTuningConfig());
 
-        JDBCIndexTask task = captured.getValue();
-        JDBCIOConfig taskConfig = task.getIOConfig();
+    JDBCIOConfig taskConfig = task.getIOConfig();
+    Assert.assertEquals("sequenceName-0", taskConfig.getBaseSequenceName());
+    Assert.assertTrue("isUseTransaction", taskConfig.isUseTransaction());
+    Assert.assertFalse("pauseAfterRead", taskConfig.isPauseAfterRead());
+    Assert.assertFalse("minimumMessageTime", taskConfig.getMinimumMessageTime().isPresent());
 
-    }
+    Assert.assertEquals(table, taskConfig.getJdbcOffsets().getTable());
+    Assert.assertEquals(taskConfig.getJdbcOffsets().getOffsetMaps().values().toArray()[0], 10);
+
+  }
 
 
-    @Test
-    public void testReplicas() throws Exception {
-        supervisor = getSupervisor(2, 1, "PT1H", null);
+  @Test
+  public void testSkipOffsetGaps() throws Exception {
+    supervisor = getSupervisor(1, 1, "PT1H", null);
 
-        Capture<JDBCIndexTask> captured = Capture.newInstance(CaptureType.ALL);
-        expect(taskMaster.getTaskQueue()).andReturn(Optional.of(taskQueue)).anyTimes();
-        expect(taskMaster.getTaskRunner()).andReturn(Optional.<TaskRunner>absent()).anyTimes();
-        expect(taskStorage.getActiveTasks()).andReturn(ImmutableList.<Task>of()).anyTimes();
-        expect(indexerMetadataStorageCoordinator.getDataSourceMetadata(DATASOURCE)).andReturn(
-                new JDBCDataSourceMetadata(
-                        null
-                )
-        ).anyTimes();
-        expect(taskQueue.add(capture(captured))).andReturn(true).times(2);
-        replayAll();
+    Capture<JDBCIndexTask> captured = Capture.newInstance();
+    expect(taskMaster.getTaskQueue()).andReturn(Optional.of(taskQueue)).anyTimes();
+    expect(taskMaster.getTaskRunner()).andReturn(Optional.of(taskRunner)).anyTimes();
+    expect(taskStorage.getActiveTasks()).andReturn(ImmutableList.<Task>of()).anyTimes();
+    expect(indexerMetadataStorageCoordinator.resetDataSourceMetadata(DATASOURCE, new JDBCDataSourceMetadata(
+        new JDBCOffsets(table, offsets)
+    ))).andReturn(true).anyTimes();
+    expect(indexerMetadataStorageCoordinator.getDataSourceMetadata(DATASOURCE)).andReturn(
+        new JDBCDataSourceMetadata(
+            new JDBCOffsets(table, offsets)
+        )
+    ).anyTimes();
+    expect(taskQueue.add(capture(captured))).andReturn(true);
+    taskRunner.registerListener(anyObject(TaskRunnerListener.class), anyObject(Executor.class));
+    replayAll();
 
-        supervisor.start();
-        supervisor.runInternal();
-        verifyAll();
+    supervisor.start();
+    supervisor.runInternal();
+    verifyAll();
 
-        JDBCIndexTask task1 = captured.getValues().get(0);
-        Assert.assertEquals(task1.getIOConfig().getPartitions().getOffsetMaps().keySet().toArray()[0], 0);
+    JDBCIndexTask task = captured.getValue();
+    JDBCIOConfig taskConfig = task.getIOConfig();
 
-        JDBCIndexTask task2 = captured.getValues().get(1);
-        Assert.assertEquals(task2.getIOConfig().getPartitions().getOffsetMaps().values().toArray()[0], 10);
-    }
+  }
 
-    @Test
-    public void testLateMessageRejectionPeriod() throws Exception {
-        supervisor = getSupervisor(2, 1, "PT1H", null);
 
-        Capture<JDBCIndexTask> captured = Capture.newInstance(CaptureType.ALL);
-        expect(taskMaster.getTaskQueue()).andReturn(Optional.of(taskQueue)).anyTimes();
-        expect(taskMaster.getTaskRunner()).andReturn(Optional.<TaskRunner>absent()).anyTimes();
-        expect(taskStorage.getActiveTasks()).andReturn(ImmutableList.<Task>of()).anyTimes();
-        expect(indexerMetadataStorageCoordinator.getDataSourceMetadata(DATASOURCE)).andReturn(
-                new JDBCDataSourceMetadata(
-                        null
-                )
-        ).anyTimes();
-        expect(taskQueue.add(capture(captured))).andReturn(true).times(2);
-        replayAll();
+  @Test
+  public void testReplicas() throws Exception {
+    supervisor = getSupervisor(2, 1, "PT1H", null);
 
-        supervisor.start();
-        supervisor.runInternal();
-        verifyAll();
+    Capture<JDBCIndexTask> captured = Capture.newInstance(CaptureType.ALL);
+    expect(taskMaster.getTaskQueue()).andReturn(Optional.of(taskQueue)).anyTimes();
+    expect(taskMaster.getTaskRunner()).andReturn(Optional.<TaskRunner>absent()).anyTimes();
+    expect(taskStorage.getActiveTasks()).andReturn(ImmutableList.<Task>of()).anyTimes();
+    expect(indexerMetadataStorageCoordinator.resetDataSourceMetadata(DATASOURCE, new JDBCDataSourceMetadata(
+        new JDBCOffsets(table, offsets)
+    ))).andReturn(true).anyTimes();
+    expect(indexerMetadataStorageCoordinator.getDataSourceMetadata(DATASOURCE)).andReturn(
+        new JDBCDataSourceMetadata(
+            new JDBCOffsets(table, offsets)
+        )
+    ).anyTimes();
+    expect(taskQueue.add(capture(captured))).andReturn(true).times(2);
+    replayAll();
 
-        JDBCIndexTask task1 = captured.getValues().get(0);
-        JDBCIndexTask task2 = captured.getValues().get(1);
+    supervisor.start();
+    supervisor.runInternal();
+    verifyAll();
+
+    JDBCIndexTask task1 = captured.getValues().get(0);
+    Assert.assertEquals(task1.getIOConfig().getJdbcOffsets().getOffsetMaps().keySet().toArray()[0], 0);
+
+    JDBCIndexTask task2 = captured.getValues().get(1);
+    Assert.assertEquals(task2.getIOConfig().getJdbcOffsets().getOffsetMaps().values().toArray()[0], 10);
+  }
+
+  @Test
+  public void testLateMessageRejectionPeriod() throws Exception {
+    supervisor = getSupervisor(2, 1, "PT1H", null);
+
+    Capture<JDBCIndexTask> captured = Capture.newInstance(CaptureType.ALL);
+    expect(taskMaster.getTaskQueue()).andReturn(Optional.of(taskQueue)).anyTimes();
+    expect(taskMaster.getTaskRunner()).andReturn(Optional.<TaskRunner>absent()).anyTimes();
+    expect(taskStorage.getActiveTasks()).andReturn(ImmutableList.<Task>of()).anyTimes();
+    expect(indexerMetadataStorageCoordinator.resetDataSourceMetadata(DATASOURCE, new JDBCDataSourceMetadata(
+        new JDBCOffsets(table, offsets)
+    ))).andReturn(true).anyTimes();
+    expect(indexerMetadataStorageCoordinator.getDataSourceMetadata(DATASOURCE)).andReturn(
+        new JDBCDataSourceMetadata(
+            new JDBCOffsets(table, offsets)
+        )
+    ).anyTimes();
+    expect(taskQueue.add(capture(captured))).andReturn(true).times(2);
+    replayAll();
+
+    supervisor.start();
+    supervisor.runInternal();
+    verifyAll();
+
+    JDBCIndexTask task1 = captured.getValues().get(0);
+    JDBCIndexTask task2 = captured.getValues().get(1);
 
 //        Assert.assertTrue(
 //                "minimumMessageTime",
@@ -321,1294 +336,1351 @@ public class JDBCSupervisorTest extends EasyMockSupport {
 //                task1.getIOConfig().getMinimumMessageTime().get(),
 //                task2.getIOConfig().getMinimumMessageTime().get()
 //        );
+  }
+
+  @Test
+  /**
+   * Test generating the starting offsets from the partition high water marks in JDBC.
+   */
+  public void testLatestOffset() throws Exception {
+    supervisor = getSupervisor(1, 1, "PT1H", null);
+
+    Capture<JDBCIndexTask> captured = Capture.newInstance();
+    expect(taskMaster.getTaskQueue()).andReturn(Optional.of(taskQueue)).anyTimes();
+    expect(taskMaster.getTaskRunner()).andReturn(Optional.<TaskRunner>absent()).anyTimes();
+    expect(taskStorage.getActiveTasks()).andReturn(ImmutableList.<Task>of()).anyTimes();
+    expect(indexerMetadataStorageCoordinator.resetDataSourceMetadata(DATASOURCE, new JDBCDataSourceMetadata(
+        new JDBCOffsets(table, offsets)
+    ))).andReturn(true).anyTimes();
+    expect(indexerMetadataStorageCoordinator.getDataSourceMetadata(DATASOURCE)).andReturn(
+        new JDBCDataSourceMetadata(
+            new JDBCOffsets(table, offsets)
+        )
+    ).anyTimes();
+    expect(taskQueue.add(capture(captured))).andReturn(true);
+    replayAll();
+
+    supervisor.start();
+    supervisor.runInternal();
+    verifyAll();
+
+    JDBCIndexTask task = captured.getValue();
+    Assert.assertEquals(task.getIOConfig().getJdbcOffsets().getOffsetMaps().values().toArray()[0], 10);
+  }
+
+  @Test
+  /**
+   * Test generating the starting offsets from the partition data stored in druid_dataSource which contains the
+   * offsets of the last built segments.
+   */
+  public void testDatasourceMetadata() throws Exception {
+    supervisor = getSupervisor(1, 1, "PT1H", null);
+
+    Capture<JDBCIndexTask> captured = Capture.newInstance();
+    expect(taskMaster.getTaskQueue()).andReturn(Optional.of(taskQueue)).anyTimes();
+    expect(taskMaster.getTaskRunner()).andReturn(Optional.<TaskRunner>absent()).anyTimes();
+    expect(taskStorage.getActiveTasks()).andReturn(ImmutableList.<Task>of()).anyTimes();
+    expect(indexerMetadataStorageCoordinator.resetDataSourceMetadata(DATASOURCE, new JDBCDataSourceMetadata(
+        new JDBCOffsets(table, offsets)
+    ))).andReturn(true).anyTimes();
+    expect(indexerMetadataStorageCoordinator.getDataSourceMetadata(DATASOURCE)).andReturn(
+        new JDBCDataSourceMetadata(new JDBCOffsets(table, offsets))
+    ).anyTimes();
+    expect(taskQueue.add(capture(captured))).andReturn(true);
+    replayAll();
+
+    supervisor.start();
+    supervisor.runInternal();
+    verifyAll();
+
+    JDBCIndexTask task = captured.getValue();
+    JDBCIOConfig taskConfig = task.getIOConfig();
+    Assert.assertEquals("sequenceName-0", taskConfig.getBaseSequenceName());
+    Assert.assertEquals(task.getIOConfig().getJdbcOffsets().getOffsetMaps().keySet().toArray()[0], 0);
+    Assert.assertEquals(task.getIOConfig().getJdbcOffsets().getOffsetMaps().values().toArray()[0], 10);
+  }
+
+  @Test
+  public void testKillIncompatibleTasks() throws Exception {
+    supervisor = getSupervisor(2, 1, "PT1H", null);
+    Task id1 = createJDBCIndexTask( // unexpected # of partitions (kill)
+        "id1",
+        DATASOURCE,
+        "index_jdbc_testDS__some_other_sequenceName",
+        new JDBCOffsets(table, offsets),
+        null
+    );
+
+    Task id2 = createJDBCIndexTask( // correct number of partitions and ranges (don't kill)
+        "id2",
+        DATASOURCE,
+        "sequenceName-0",
+        new JDBCOffsets(table, offsets),
+        null
+    );
+
+    Task id3 = createJDBCIndexTask( // unexpected range on partition 2 (kill)
+        "id3",
+        DATASOURCE,
+        "index_jdbc_testDS__some_other_sequenceName",
+        new JDBCOffsets(table, offsets),
+        null
+    );
+
+    Task id4 = createJDBCIndexTask( // different datasource (don't kill)
+        "id4",
+        "other-datasource",
+        "index_jdbc_testDS_d927edff33c4b3f",
+        new JDBCOffsets(table, offsets),
+        null
+    );
+
+    Task id5 = new RealtimeIndexTask( // non JDBCIndexTask (don't kill)
+        "id5",
+        null,
+        new FireDepartment(
+            dataSchema,
+            new RealtimeIOConfig(null, null, null),
+            null
+        ),
+        null
+    );
+
+    List<Task> existingTasks = ImmutableList.of(id1, id2, id3, id4, id5);
+
+    expect(taskMaster.getTaskQueue()).andReturn(Optional.of(taskQueue)).anyTimes();
+    expect(taskMaster.getTaskRunner()).andReturn(Optional.of(taskRunner)).anyTimes();
+    expect(taskRunner.getRunningTasks()).andReturn(Collections.EMPTY_LIST).anyTimes();
+    expect(taskStorage.getActiveTasks()).andReturn(existingTasks).anyTimes();
+    expect(taskStorage.getStatus("id1")).andReturn(Optional.of(TaskStatus.running("id1"))).anyTimes();
+    expect(taskStorage.getStatus("id2")).andReturn(Optional.of(TaskStatus.running("id2"))).anyTimes();
+    expect(taskStorage.getStatus("id3")).andReturn(Optional.of(TaskStatus.running("id3"))).anyTimes();
+    expect(taskStorage.getTask("id1")).andReturn(Optional.of(id1)).anyTimes();
+    expect(taskStorage.getTask("id2")).andReturn(Optional.of(id2)).anyTimes();
+    expect(taskStorage.getTask("id3")).andReturn(Optional.of(id3)).anyTimes();
+    expect(taskClient.getStatusAsync(anyString())).andReturn(Futures.immediateFuture(JDBCIndexTask.Status.NOT_STARTED))
+        .anyTimes();
+    expect(taskClient.getStartTimeAsync(anyString())).andReturn(Futures.immediateFuture(DateTime.now())).anyTimes();
+    expect(indexerMetadataStorageCoordinator.getDataSourceMetadata(DATASOURCE)).andReturn(
+        new JDBCDataSourceMetadata(
+            new JDBCOffsets(table, offsets)
+        )
+    ).anyTimes();
+
+    expect(taskClient.stopAsync("id1", false)).andReturn(Futures.immediateFuture(true));
+    expect(taskClient.stopAsync("id3", false)).andReturn(Futures.immediateFuture(false));
+    taskRunner.registerListener(anyObject(TaskRunnerListener.class), anyObject(Executor.class));
+    taskQueue.shutdown("id3");
+
+    expect(taskQueue.add(anyObject(Task.class))).andReturn(true);
+    replayAll();
+    supervisor.start();
+    supervisor.runInternal();
+    verifyAll();
+  }
+
+  @Test
+  public void testRequeueTaskWhenFailed() throws Exception {
+    supervisor = getSupervisor(2, 1, "PT1H", null);
+    Capture<Task> captured = Capture.newInstance(CaptureType.ALL);
+    expect(taskMaster.getTaskQueue()).andReturn(Optional.of(taskQueue)).anyTimes();
+    expect(taskMaster.getTaskRunner()).andReturn(Optional.of(taskRunner)).anyTimes();
+    expect(taskRunner.getRunningTasks()).andReturn(Collections.EMPTY_LIST).anyTimes();
+    expect(taskStorage.getActiveTasks()).andReturn(ImmutableList.<Task>of()).anyTimes();
+    expect(taskClient.getStatusAsync(anyString())).andReturn(Futures.immediateFuture(JDBCIndexTask.Status.NOT_STARTED))
+        .anyTimes();
+    expect(taskClient.getStartTimeAsync(anyString())).andReturn(Futures.immediateFuture(DateTime.now())).anyTimes();
+    expect(indexerMetadataStorageCoordinator.resetDataSourceMetadata(DATASOURCE, new JDBCDataSourceMetadata(
+        new JDBCOffsets(table, offsets)
+    ))).andReturn(true).anyTimes();
+    expect(indexerMetadataStorageCoordinator.getDataSourceMetadata(DATASOURCE)).andReturn(
+        new JDBCDataSourceMetadata(
+            new JDBCOffsets(table, offsets)
+        )
+    ).anyTimes();
+    expect(taskQueue.add(capture(captured))).andReturn(true).times(2);
+    taskRunner.registerListener(anyObject(TaskRunnerListener.class), anyObject(Executor.class));
+    replayAll();
+
+    supervisor.start();
+    supervisor.runInternal();
+    verifyAll();
+
+    List<Task> tasks = captured.getValues();
+
+    // test that running the main loop again checks the status of the tasks that were created and does nothing if they
+    // are all still running
+    reset(taskStorage);
+    expect(taskStorage.getActiveTasks()).andReturn(tasks).anyTimes();
+    for (Task task : tasks) {
+      expect(taskStorage.getStatus(task.getId())).andReturn(Optional.of(TaskStatus.running(task.getId()))).anyTimes();
+      expect(taskStorage.getTask(task.getId())).andReturn(Optional.of(task)).anyTimes();
+    }
+    replay(taskStorage);
+
+    supervisor.runInternal();
+    verifyAll();
+
+    // test that a task failing causes a new task to be re-queued with the same parameters
+    Capture<Task> aNewTaskCapture = Capture.newInstance();
+    List<Task> imStillAlive = tasks.subList(0, 1);
+    JDBCIndexTask iHaveFailed = (JDBCIndexTask) tasks.get(1);
+    reset(taskStorage);
+    reset(taskQueue);
+    expect(taskStorage.getActiveTasks()).andReturn(imStillAlive).anyTimes();
+    for (Task task : imStillAlive) {
+      expect(taskStorage.getStatus(task.getId())).andReturn(Optional.of(TaskStatus.running(task.getId()))).anyTimes();
+      expect(taskStorage.getTask(task.getId())).andReturn(Optional.of(task)).anyTimes();
+    }
+    expect(taskStorage.getStatus(iHaveFailed.getId())).andReturn(Optional.of(TaskStatus.failure(iHaveFailed.getId())));
+    expect(taskStorage.getTask(iHaveFailed.getId())).andReturn(Optional.of((Task) iHaveFailed)).anyTimes();
+    expect(taskQueue.add(capture(aNewTaskCapture))).andReturn(true);
+    replay(taskStorage);
+    replay(taskQueue);
+
+    supervisor.runInternal();
+    verifyAll();
+
+    Assert.assertNotEquals(iHaveFailed.getId(), aNewTaskCapture.getValue().getId());
+    Assert.assertEquals(
+        iHaveFailed.getIOConfig().getBaseSequenceName(),
+        ((JDBCIndexTask) aNewTaskCapture.getValue()).getIOConfig().getBaseSequenceName()
+    );
+  }
+
+  @Test
+  public void testRequeueAdoptedTaskWhenFailed() throws Exception {
+    supervisor = getSupervisor(2, 1, "PT1H", null);
+
+    DateTime now = DateTime.now();
+    Task id1 = createJDBCIndexTask(
+        "id1",
+        DATASOURCE,
+        "sequenceName-0",
+        new JDBCOffsets(table, offsets),
+        now
+    );
+
+    List<Task> existingTasks = ImmutableList.of(id1);
+
+    Capture<Task> captured = Capture.newInstance();
+    expect(taskMaster.getTaskQueue()).andReturn(Optional.of(taskQueue)).anyTimes();
+    expect(taskMaster.getTaskRunner()).andReturn(Optional.of(taskRunner)).anyTimes();
+    expect(taskRunner.getRunningTasks()).andReturn(Collections.EMPTY_LIST).anyTimes();
+    expect(taskStorage.getActiveTasks()).andReturn(existingTasks).anyTimes();
+    expect(taskStorage.getStatus("id1")).andReturn(Optional.of(TaskStatus.running("id1"))).anyTimes();
+    expect(taskStorage.getTask("id1")).andReturn(Optional.of(id1)).anyTimes();
+    expect(taskClient.getStatusAsync("id1")).andReturn(Futures.immediateFuture(JDBCIndexTask.Status.READING));
+    expect(taskClient.getStartTimeAsync("id1")).andReturn(Futures.immediateFuture(now)).anyTimes();
+    expect(taskQueue.add(capture(captured))).andReturn(true);
+    expect(indexerMetadataStorageCoordinator.resetDataSourceMetadata(DATASOURCE, new JDBCDataSourceMetadata(
+        new JDBCOffsets(table, offsets)
+    ))).andReturn(true).anyTimes();
+    expect(indexerMetadataStorageCoordinator.getDataSourceMetadata(DATASOURCE)).andReturn(
+        new JDBCDataSourceMetadata(
+            new JDBCOffsets(table, offsets)
+        )
+    ).anyTimes();
+    taskRunner.registerListener(anyObject(TaskRunnerListener.class), anyObject(Executor.class));
+    replayAll();
+
+    supervisor.start();
+    supervisor.runInternal();
+    verifyAll();
+
+    // check that replica tasks are created with the same minimumMessageTime as tasks inherited from another supervisor
+    Assert.assertEquals(now, ((JDBCIndexTask) captured.getValue()).getIOConfig().getMinimumMessageTime().get());
+
+    // test that a task failing causes a new task to be re-queued with the same parameters
+    String runningTaskId = captured.getValue().getId();
+    Capture<Task> aNewTaskCapture = Capture.newInstance();
+    JDBCIndexTask iHaveFailed = (JDBCIndexTask) existingTasks.get(0);
+    reset(taskStorage);
+    reset(taskQueue);
+    reset(taskClient);
+    expect(taskStorage.getActiveTasks()).andReturn(ImmutableList.of(captured.getValue())).anyTimes();
+    expect(taskStorage.getStatus(iHaveFailed.getId())).andReturn(Optional.of(TaskStatus.failure(iHaveFailed.getId())));
+    expect(taskStorage.getStatus(runningTaskId)).andReturn(Optional.of(TaskStatus.running(runningTaskId))).anyTimes();
+    expect(taskStorage.getTask(iHaveFailed.getId())).andReturn(Optional.of((Task) iHaveFailed)).anyTimes();
+    expect(taskStorage.getTask(runningTaskId)).andReturn(Optional.of(captured.getValue())).anyTimes();
+    expect(taskClient.getStatusAsync(runningTaskId)).andReturn(Futures.immediateFuture(JDBCIndexTask.Status.READING));
+    expect(taskClient.getStartTimeAsync(runningTaskId)).andReturn(Futures.immediateFuture(now)).anyTimes();
+    expect(taskQueue.add(capture(aNewTaskCapture))).andReturn(true);
+    replay(taskStorage);
+    replay(taskQueue);
+    replay(taskClient);
+
+    supervisor.runInternal();
+    verifyAll();
+
+    Assert.assertNotEquals(iHaveFailed.getId(), aNewTaskCapture.getValue().getId());
+    Assert.assertEquals(
+        iHaveFailed.getIOConfig().getBaseSequenceName(),
+        ((JDBCIndexTask) aNewTaskCapture.getValue()).getIOConfig().getBaseSequenceName()
+    );
+
+    // check that failed tasks are recreated with the same minimumMessageTime as the task it replaced, even if that
+    // task came from another supervisor
+    Assert.assertEquals(now, ((JDBCIndexTask) aNewTaskCapture.getValue()).getIOConfig().getMinimumMessageTime().get());
+  }
+
+  @Test
+  public void testQueueNextTasksOnSuccess() throws Exception {
+    supervisor = getSupervisor(2, 1, "PT1H", null);
+
+    Capture<Task> captured = Capture.newInstance(CaptureType.ALL);
+    expect(taskMaster.getTaskQueue()).andReturn(Optional.of(taskQueue)).anyTimes();
+    expect(taskMaster.getTaskRunner()).andReturn(Optional.of(taskRunner)).anyTimes();
+    expect(taskRunner.getRunningTasks()).andReturn(Collections.EMPTY_LIST).anyTimes();
+    expect(taskStorage.getActiveTasks()).andReturn(ImmutableList.<Task>of()).anyTimes();
+    expect(taskClient.getStatusAsync(anyString())).andReturn(Futures.immediateFuture(JDBCIndexTask.Status.NOT_STARTED))
+        .anyTimes();
+    expect(taskClient.getStartTimeAsync(anyString())).andReturn(Futures.immediateFuture(DateTime.now())).anyTimes();
+    expect(indexerMetadataStorageCoordinator.getDataSourceMetadata(DATASOURCE)).andReturn(
+        new JDBCDataSourceMetadata(
+            new JDBCOffsets(table, offsets)
+        )
+    ).anyTimes();
+
+    expect(taskQueue.add(capture(captured))).andReturn(true).times(2);
+    taskRunner.registerListener(anyObject(TaskRunnerListener.class), anyObject(Executor.class));
+    replayAll();
+
+    supervisor.start();
+    supervisor.runInternal();
+    verifyAll();
+
+    List<Task> tasks = captured.getValues();
+
+    reset(taskStorage);
+    expect(taskStorage.getActiveTasks()).andReturn(tasks).anyTimes();
+    for (Task task : tasks) {
+      expect(taskStorage.getStatus(task.getId())).andReturn(Optional.of(TaskStatus.running(task.getId()))).anyTimes();
+      expect(taskStorage.getTask(task.getId())).andReturn(Optional.of(task)).anyTimes();
+    }
+    replay(taskStorage);
+
+    supervisor.runInternal();
+    verifyAll();
+
+    // test that a task succeeding causes a new task to be re-queued with the next offset range and causes any replica
+    // tasks to be shutdown
+    Capture<Task> newTasksCapture = Capture.newInstance(CaptureType.ALL);
+    Capture<String> shutdownTaskIdCapture = Capture.newInstance();
+    List<Task> imStillRunning = tasks.subList(1, 2);
+    JDBCIndexTask iAmSuccess = (JDBCIndexTask) tasks.get(0);
+    reset(taskStorage);
+    reset(taskQueue);
+    reset(taskClient);
+    expect(taskStorage.getActiveTasks()).andReturn(imStillRunning).anyTimes();
+    for (Task task : imStillRunning) {
+      expect(taskStorage.getStatus(task.getId())).andReturn(Optional.of(TaskStatus.running(task.getId()))).anyTimes();
+      expect(taskStorage.getTask(task.getId())).andReturn(Optional.of(task)).anyTimes();
+    }
+    expect(taskStorage.getStatus(iAmSuccess.getId())).andReturn(Optional.of(TaskStatus.success(iAmSuccess.getId())));
+    expect(taskStorage.getTask(iAmSuccess.getId())).andReturn(Optional.of((Task) iAmSuccess)).anyTimes();
+    expect(taskQueue.add(capture(newTasksCapture))).andReturn(true).times(2);
+    expect(taskClient.stopAsync(capture(shutdownTaskIdCapture), eq(false))).andReturn(Futures.immediateFuture(true));
+    replay(taskStorage);
+    replay(taskQueue);
+    replay(taskClient);
+
+    supervisor.runInternal();
+    verifyAll();
+
+    // make sure we killed the right task (sequenceName for replicas are the same)
+    Assert.assertTrue(shutdownTaskIdCapture.getValue().contains(iAmSuccess.getIOConfig().getBaseSequenceName()));
+  }
+
+
+  @Test
+  public void testBeginPublishAndQueueNextTasks() throws Exception {
+    final TaskLocation location = new TaskLocation("testHost", 1234, -1);
+
+    supervisor = getSupervisor(2, 1, "PT1M", null);
+
+    Capture<Task> captured = Capture.newInstance(CaptureType.ALL);
+    expect(taskMaster.getTaskQueue()).andReturn(Optional.of(taskQueue)).anyTimes();
+    expect(taskMaster.getTaskRunner()).andReturn(Optional.of(taskRunner)).anyTimes();
+    expect(taskRunner.getRunningTasks()).andReturn(Collections.EMPTY_LIST).anyTimes();
+    expect(taskStorage.getActiveTasks()).andReturn(ImmutableList.<Task>of()).anyTimes();
+    expect(indexerMetadataStorageCoordinator.resetDataSourceMetadata(DATASOURCE, new JDBCDataSourceMetadata(
+        new JDBCOffsets(table, offsets)
+    ))).andReturn(true).anyTimes();
+    expect(indexerMetadataStorageCoordinator.getDataSourceMetadata(DATASOURCE)).andReturn(
+        new JDBCDataSourceMetadata(
+            new JDBCOffsets(table, offsets)
+        )
+    ).anyTimes();
+    expect(taskQueue.add(capture(captured))).andReturn(true).times(2);
+    taskRunner.registerListener(anyObject(TaskRunnerListener.class), anyObject(Executor.class));
+    replayAll();
+
+    supervisor.start();
+    supervisor.runInternal();
+    verifyAll();
+
+    List<Task> tasks = captured.getValues();
+    Collection workItems = new ArrayList<>();
+    for (Task task : tasks) {
+      workItems.add(new TestTaskRunnerWorkItem(task.getId(), null, location));
     }
 
-    @Test
-    /**
-     * Test generating the starting offsets from the partition high water marks in JDBC.
-     */
-    public void testLatestOffset() throws Exception {
-        supervisor = getSupervisor(1, 1, "PT1H", null);
+    reset(taskStorage, taskRunner, taskClient, taskQueue);
+    captured = Capture.newInstance(CaptureType.ALL);
+    expect(taskStorage.getActiveTasks()).andReturn(tasks).anyTimes();
+    for (Task task : tasks) {
+      expect(taskStorage.getStatus(task.getId())).andReturn(Optional.of(TaskStatus.running(task.getId()))).anyTimes();
+      expect(taskStorage.getTask(task.getId())).andReturn(Optional.of(task)).anyTimes();
+    }
+    expect(taskRunner.getRunningTasks()).andReturn(workItems).anyTimes();
+    expect(taskClient.getStatusAsync(anyString()))
+        .andReturn(Futures.immediateFuture(JDBCIndexTask.Status.READING))
+        .anyTimes();
+    expect(taskClient.getStartTimeAsync(EasyMock.contains("sequenceName-0")))
+        .andReturn(Futures.immediateFuture(DateTime.now().minusMinutes(1)))
+        .andReturn(Futures.immediateFuture(DateTime.now()));
+    expect(taskClient.pauseAsync(EasyMock.contains("sequenceName-0")))
+        .andReturn(Futures.immediateFuture((Map<Integer, Integer>) ImmutableMap.of(0, 10)))
+        .andReturn(Futures.immediateFuture((Map<Integer, Integer>) ImmutableMap.of(0, 10)));
+    expect(taskQueue.add(capture(captured))).andReturn(true).times(2);
+    taskQueue.shutdown(EasyMock.contains("sequenceName-0"));
+    expectLastCall().times(2);
+    replay(taskStorage, taskRunner, taskClient, taskQueue);
 
-        Capture<JDBCIndexTask> captured = Capture.newInstance();
-        expect(taskMaster.getTaskQueue()).andReturn(Optional.of(taskQueue)).anyTimes();
-        expect(taskMaster.getTaskRunner()).andReturn(Optional.<TaskRunner>absent()).anyTimes();
-        expect(taskStorage.getActiveTasks()).andReturn(ImmutableList.<Task>of()).anyTimes();
-        expect(indexerMetadataStorageCoordinator.getDataSourceMetadata(DATASOURCE)).andReturn(
-                new JDBCDataSourceMetadata(
-                        null
-                )
-        ).anyTimes();
-        expect(taskQueue.add(capture(captured))).andReturn(true);
-        replayAll();
+    supervisor.runInternal();
+    verifyAll();
 
-        supervisor.start();
-        supervisor.runInternal();
-        verifyAll();
+    for (Task task : captured.getValues()) {
+      JDBCIndexTask jdbcIndexTask = (JDBCIndexTask) task;
+      Assert.assertEquals(dataSchema, jdbcIndexTask.getDataSchema());
+      Assert.assertEquals(JDBCTuningConfig.copyOf(tuningConfig), jdbcIndexTask.getTuningConfig());
 
-        JDBCIndexTask task = captured.getValue();
-        Assert.assertEquals(task.getIOConfig().getPartitions().getOffsetMaps().values().toArray()[0], 10);
+      JDBCIOConfig taskConfig = jdbcIndexTask.getIOConfig();
+      Assert.assertEquals("sequenceName-0", taskConfig.getBaseSequenceName());
+      Assert.assertTrue("isUseTransaction", taskConfig.isUseTransaction());
+      Assert.assertFalse("pauseAfterRead", taskConfig.isPauseAfterRead());
+
+      Assert.assertEquals(table, taskConfig.getJdbcOffsets().getTable());
+      Assert.assertEquals(10, (long) taskConfig.getJdbcOffsets().getOffsetMaps().get(0));
+    }
+  }
+
+  @Test
+  public void testDiscoverExistingPublishingTask() throws Exception {
+    final TaskLocation location = new TaskLocation("testHost", 1234, -1);
+
+
+    supervisor = getSupervisor(1, 1, "PT1H", null);
+
+    Task task = createJDBCIndexTask(
+        "id1",
+        DATASOURCE,
+        "sequenceName-0",
+        new JDBCOffsets(table, offsets),
+        null
+    );
+
+    Collection workItems = new ArrayList<>();
+    workItems.add(new TestTaskRunnerWorkItem(task.getId(), null, location));
+
+    Capture<JDBCIndexTask> captured = Capture.newInstance();
+    expect(taskMaster.getTaskQueue()).andReturn(Optional.of(taskQueue)).anyTimes();
+    expect(taskMaster.getTaskRunner()).andReturn(Optional.of(taskRunner)).anyTimes();
+    expect(taskRunner.getRunningTasks()).andReturn(workItems).anyTimes();
+    expect(taskStorage.getActiveTasks()).andReturn(ImmutableList.of(task)).anyTimes();
+    expect(taskStorage.getStatus("id1")).andReturn(Optional.of(TaskStatus.running("id1"))).anyTimes();
+    expect(taskStorage.getTask("id1")).andReturn(Optional.of(task)).anyTimes();
+    expect(indexerMetadataStorageCoordinator.resetDataSourceMetadata(DATASOURCE, new JDBCDataSourceMetadata(
+        new JDBCOffsets(table, offsets)
+    ))).andReturn(true).anyTimes();
+    expect(indexerMetadataStorageCoordinator.getDataSourceMetadata(DATASOURCE)).andReturn(
+        new JDBCDataSourceMetadata(
+            new JDBCOffsets(table, offsets)
+        )
+    ).anyTimes();
+    expect(taskClient.getStatusAsync("id1")).andReturn(Futures.immediateFuture(JDBCIndexTask.Status.PUBLISHING));
+    expect(taskClient.getCurrentOffsetsAsync("id1", false))
+        .andReturn(Futures.immediateFuture(new HashMap<>(0, 10)));
+    expect(taskClient.getCurrentOffsets("id1", true)).andReturn(new HashMap<>(0, 10));
+    expect(taskQueue.add(capture(captured))).andReturn(true);
+
+    taskRunner.registerListener(anyObject(TaskRunnerListener.class), anyObject(Executor.class));
+    replayAll();
+
+    supervisor.start();
+    supervisor.runInternal();
+    supervisor.updateCurrentAndLatestOffsets().run();
+    SupervisorReport report = supervisor.getStatus();
+    verifyAll();
+
+    Assert.assertEquals(DATASOURCE, report.getId());
+    Assert.assertTrue(report.getPayload() instanceof JDBCSupervisorReport.JDBCSupervisorReportPayload);
+
+    JDBCSupervisorReport.JDBCSupervisorReportPayload payload = (JDBCSupervisorReport.JDBCSupervisorReportPayload)
+        report.getPayload();
+
+    Assert.assertEquals(DATASOURCE, payload.getDataSource());
+    Assert.assertEquals(3600L, (long) payload.getDurationSeconds());
+    Assert.assertEquals(1, (int) payload.getReplicas());
+    Assert.assertEquals(table, payload.getTable());
+    Assert.assertEquals(0, payload.getActiveTasks().size());
+    Assert.assertEquals(1, payload.getPublishingTasks().size());
+
+    TaskReportData publishingReport = payload.getPublishingTasks().get(0);
+
+    Assert.assertEquals("id1", publishingReport.getId());
+    Assert.assertEquals(publishingReport.getOffsets().values().toArray()[0], 10);
+
+
+    JDBCIndexTask capturedTask = captured.getValue();
+    Assert.assertEquals(dataSchema, capturedTask.getDataSchema());
+    Assert.assertEquals(JDBCTuningConfig.copyOf(tuningConfig), capturedTask.getTuningConfig());
+
+    JDBCIOConfig capturedTaskConfig = capturedTask.getIOConfig();
+    Assert.assertEquals("sequenceName-0", capturedTaskConfig.getBaseSequenceName());
+    Assert.assertTrue("isUseTransaction", capturedTaskConfig.isUseTransaction());
+    Assert.assertFalse("pauseAfterRead", capturedTaskConfig.isPauseAfterRead());
+
+    // check that the new task was created with starting offsets matching where the publishing task finished
+    Assert.assertEquals(table, capturedTaskConfig.getJdbcOffsets().getTable());
+    Assert.assertEquals(capturedTaskConfig.getJdbcOffsets().getOffsetMaps().values().toArray()[0], 10);
+
+  }
+
+  @Test
+  public void testDiscoverExistingPublishingTaskWithDifferentPartitionAllocation() throws Exception {
+    final TaskLocation location = new TaskLocation("testHost", 1234, -1);
+
+    supervisor = getSupervisor(1, 1, "PT1H", null);
+
+    Task task = createJDBCIndexTask(
+        "id1",
+        DATASOURCE,
+        "sequenceName-0",
+        new JDBCOffsets(table, offsets),
+        null
+    );
+
+    Collection workItems = new ArrayList<>();
+    workItems.add(new TestTaskRunnerWorkItem(task.getId(), null, location));
+
+    Capture<JDBCIndexTask> captured = Capture.newInstance();
+    expect(taskMaster.getTaskQueue()).andReturn(Optional.of(taskQueue)).anyTimes();
+    expect(taskMaster.getTaskRunner()).andReturn(Optional.of(taskRunner)).anyTimes();
+    expect(taskRunner.getRunningTasks()).andReturn(workItems).anyTimes();
+    expect(taskStorage.getActiveTasks()).andReturn(ImmutableList.of(task)).anyTimes();
+    expect(taskStorage.getStatus("id1")).andReturn(Optional.of(TaskStatus.running("id1"))).anyTimes();
+    expect(taskStorage.getTask("id1")).andReturn(Optional.of(task)).anyTimes();
+    expect(indexerMetadataStorageCoordinator.resetDataSourceMetadata(DATASOURCE, new JDBCDataSourceMetadata(
+        new JDBCOffsets(table, offsets)
+    ))).andReturn(true).anyTimes();
+    expect(indexerMetadataStorageCoordinator.getDataSourceMetadata(DATASOURCE)).andReturn(
+        new JDBCDataSourceMetadata(
+            new JDBCOffsets(table, offsets)
+        )
+    ).anyTimes();
+    expect(taskClient.getStatusAsync("id1")).andReturn(Futures.immediateFuture(JDBCIndexTask.Status.PUBLISHING));
+    expect(taskClient.getCurrentOffsetsAsync("id1", false))
+        .andReturn(Futures.immediateFuture(new HashMap<>(0, 10)));
+    expect(taskClient.getCurrentOffsets("id1", true)).andReturn(new HashMap<>(0, 10));
+    expect(taskQueue.add(capture(captured))).andReturn(true);
+
+    taskRunner.registerListener(anyObject(TaskRunnerListener.class), anyObject(Executor.class));
+    replayAll();
+
+    supervisor.start();
+    supervisor.runInternal();
+    supervisor.updateCurrentAndLatestOffsets().run();
+    SupervisorReport report = supervisor.getStatus();
+    verifyAll();
+
+    Assert.assertEquals(DATASOURCE, report.getId());
+    Assert.assertTrue(report.getPayload() instanceof JDBCSupervisorReport.JDBCSupervisorReportPayload);
+
+    JDBCSupervisorReport.JDBCSupervisorReportPayload payload = (JDBCSupervisorReport.JDBCSupervisorReportPayload)
+        report.getPayload();
+
+    Assert.assertEquals(DATASOURCE, payload.getDataSource());
+    Assert.assertEquals(3600L, (long) payload.getDurationSeconds());
+    Assert.assertEquals(1, (int) payload.getReplicas());
+    Assert.assertEquals(table, payload.getTable());
+    Assert.assertEquals(0, payload.getActiveTasks().size());
+    Assert.assertEquals(1, payload.getPublishingTasks().size());
+
+    TaskReportData publishingReport = payload.getPublishingTasks().get(0);
+
+    Assert.assertEquals("id1", publishingReport.getId());
+    Assert.assertEquals(publishingReport.getOffsets().values().toArray()[0], 10);
+
+    JDBCIndexTask capturedTask = captured.getValue();
+    Assert.assertEquals(dataSchema, capturedTask.getDataSchema());
+    Assert.assertEquals(JDBCTuningConfig.copyOf(tuningConfig), capturedTask.getTuningConfig());
+
+    JDBCIOConfig capturedTaskConfig = capturedTask.getIOConfig();
+    Assert.assertEquals("sequenceName-0", capturedTaskConfig.getBaseSequenceName());
+    Assert.assertTrue("isUseTransaction", capturedTaskConfig.isUseTransaction());
+    Assert.assertFalse("pauseAfterRead", capturedTaskConfig.isPauseAfterRead());
+
+    // check that the new task was created with starting offsets matching where the publishing task finished
+    Assert.assertEquals(table, capturedTaskConfig.getJdbcOffsets().getTable());
+    Assert.assertEquals(capturedTaskConfig.getJdbcOffsets().getOffsetMaps().values().toArray()[0], 10);
+
+  }
+
+  @Test
+  public void testDiscoverExistingPublishingAndReadingTask() throws Exception {
+    final TaskLocation location1 = new TaskLocation("testHost", 1234, -1);
+    final TaskLocation location2 = new TaskLocation("testHost2", 145, -1);
+    final DateTime startTime = new DateTime();
+
+    supervisor = getSupervisor(1, 1, "PT1H", null);
+
+    Task id1 = createJDBCIndexTask(
+        "id1",
+        DATASOURCE,
+        "sequenceName-0",
+        new JDBCOffsets(table, offsets),
+        null
+    );
+
+    Task id2 = createJDBCIndexTask(
+        "id2",
+        DATASOURCE,
+        "sequenceName-0",
+        new JDBCOffsets(table, offsets),
+        null
+    );
+
+    Collection workItems = new ArrayList<>();
+    workItems.add(new TestTaskRunnerWorkItem(id1.getId(), null, location1));
+    workItems.add(new TestTaskRunnerWorkItem(id2.getId(), null, location2));
+
+    expect(taskMaster.getTaskQueue()).andReturn(Optional.of(taskQueue)).anyTimes();
+    expect(taskMaster.getTaskRunner()).andReturn(Optional.of(taskRunner)).anyTimes();
+    expect(taskRunner.getRunningTasks()).andReturn(workItems).anyTimes();
+    expect(taskStorage.getActiveTasks()).andReturn(ImmutableList.of(id1, id2)).anyTimes();
+    expect(taskStorage.getStatus("id1")).andReturn(Optional.of(TaskStatus.running("id1"))).anyTimes();
+    expect(taskStorage.getStatus("id2")).andReturn(Optional.of(TaskStatus.running("id2"))).anyTimes();
+    expect(taskStorage.getTask("id1")).andReturn(Optional.of(id1)).anyTimes();
+    expect(taskStorage.getTask("id2")).andReturn(Optional.of(id2)).anyTimes();
+    expect(indexerMetadataStorageCoordinator.getDataSourceMetadata(DATASOURCE)).andReturn(
+        new JDBCDataSourceMetadata(
+            new JDBCOffsets(table, offsets)
+        )
+    ).anyTimes();
+    expect(taskClient.getStatusAsync("id1")).andReturn(Futures.immediateFuture(JDBCIndexTask.Status.PUBLISHING));
+    expect(taskClient.getStatusAsync("id2")).andReturn(Futures.immediateFuture(JDBCIndexTask.Status.READING));
+    expect(taskClient.getStartTimeAsync("id2")).andReturn(Futures.immediateFuture(startTime));
+    expect(taskClient.getCurrentOffsetsAsync("id1", false))
+        .andReturn(Futures.immediateFuture(new HashMap<>(0, 10)));
+    expect(taskClient.getCurrentOffsets("id1", true)).andReturn(new HashMap<>(0, 10));
+    expect(taskClient.getCurrentOffsetsAsync("id2", false))
+        .andReturn(Futures.immediateFuture(new HashMap<>(0, 10)));
+
+    taskRunner.registerListener(anyObject(TaskRunnerListener.class), anyObject(Executor.class));
+    replayAll();
+
+    supervisor.start();
+    supervisor.runInternal();
+    supervisor.updateCurrentAndLatestOffsets().run();
+    SupervisorReport report = supervisor.getStatus();
+    verifyAll();
+
+    Assert.assertEquals(DATASOURCE, report.getId());
+    Assert.assertTrue(report.getPayload() instanceof JDBCSupervisorReport.JDBCSupervisorReportPayload);
+
+    JDBCSupervisorReport.JDBCSupervisorReportPayload payload = (JDBCSupervisorReport.JDBCSupervisorReportPayload)
+        report.getPayload();
+
+    Assert.assertEquals(DATASOURCE, payload.getDataSource());
+    Assert.assertEquals(3600L, (long) payload.getDurationSeconds());
+    Assert.assertEquals(1, (int) payload.getReplicas());
+    Assert.assertEquals(table, payload.getTable());
+    Assert.assertEquals(1, payload.getActiveTasks().size());
+    Assert.assertEquals(1, payload.getPublishingTasks().size());
+
+    TaskReportData activeReport = payload.getActiveTasks().get(0);
+    TaskReportData publishingReport = payload.getPublishingTasks().get(0);
+
+    Assert.assertEquals("id2", activeReport.getId());
+    Assert.assertEquals(startTime, activeReport.getStartTime());
+    Assert.assertEquals(activeReport.getOffsets().values().toArray()[0], 10);
+//    Assert.assertEquals(activeReport.getLag().values().toArray()[0], 10);
+
+    Assert.assertEquals("id1", publishingReport.getId());
+    Assert.assertEquals(publishingReport.getOffsets().values().toArray()[0], 10);
+    Assert.assertEquals(null, publishingReport.getLag());
+
+    Assert.assertEquals(payload.getLatestOffsets().values().toArray()[0], 10);
+    Assert.assertEquals(payload.getMinimumLag().values().toArray()[0], 0);
+    Assert.assertEquals(0, (long) payload.getAggregateLag());
+    Assert.assertTrue(payload.getOffsetsLastUpdated().plusMinutes(1).isAfterNow());
+  }
+
+  @Test
+  public void testKillUnresponsiveTasksWhileGettingStartTime() throws Exception {
+    supervisor = getSupervisor(2, 1, "PT1H", null);
+
+    Capture<Task> captured = Capture.newInstance(CaptureType.ALL);
+    expect(taskMaster.getTaskQueue()).andReturn(Optional.of(taskQueue)).anyTimes();
+    expect(taskMaster.getTaskRunner()).andReturn(Optional.of(taskRunner)).anyTimes();
+    expect(taskRunner.getRunningTasks()).andReturn(Collections.EMPTY_LIST).anyTimes();
+    expect(taskStorage.getActiveTasks()).andReturn(ImmutableList.<Task>of()).anyTimes();
+    expect(indexerMetadataStorageCoordinator.resetDataSourceMetadata(DATASOURCE, new JDBCDataSourceMetadata(
+        new JDBCOffsets(table, offsets)
+    ))).andReturn(true).anyTimes();
+    expect(indexerMetadataStorageCoordinator.getDataSourceMetadata(DATASOURCE)).andReturn(
+        new JDBCDataSourceMetadata(
+            new JDBCOffsets(table, offsets)
+        )
+    ).anyTimes();
+    expect(taskQueue.add(capture(captured))).andReturn(true).times(2);
+    taskRunner.registerListener(anyObject(TaskRunnerListener.class), anyObject(Executor.class));
+    replayAll();
+
+    supervisor.start();
+    supervisor.runInternal();
+    verifyAll();
+
+    List<Task> tasks = captured.getValues();
+
+    reset(taskStorage, taskClient, taskQueue);
+    expect(taskStorage.getActiveTasks()).andReturn(tasks).anyTimes();
+    for (Task task : tasks) {
+      expect(taskStorage.getStatus(task.getId())).andReturn(Optional.of(TaskStatus.running(task.getId()))).anyTimes();
+      expect(taskStorage.getTask(task.getId())).andReturn(Optional.of(task)).anyTimes();
+      expect(taskClient.getStatusAsync(task.getId()))
+          .andReturn(Futures.immediateFuture(JDBCIndexTask.Status.NOT_STARTED));
+      expect(taskClient.getStartTimeAsync(task.getId()))
+          .andReturn(Futures.<DateTime>immediateFailedFuture(new RuntimeException()));
+      taskQueue.shutdown(task.getId());
+    }
+    replay(taskStorage, taskClient, taskQueue);
+
+    supervisor.runInternal();
+    verifyAll();
+  }
+
+  @Test
+  public void testKillUnresponsiveTasksWhilePausing() throws Exception {
+    final TaskLocation location = new TaskLocation("testHost", 1234, -1);
+
+    supervisor = getSupervisor(2, 1, "PT1M", null);
+
+    Capture<Task> captured = Capture.newInstance(CaptureType.ALL);
+    expect(taskMaster.getTaskQueue()).andReturn(Optional.of(taskQueue)).anyTimes();
+    expect(taskMaster.getTaskRunner()).andReturn(Optional.of(taskRunner)).anyTimes();
+    expect(taskRunner.getRunningTasks()).andReturn(Collections.EMPTY_LIST).anyTimes();
+    expect(taskStorage.getActiveTasks()).andReturn(ImmutableList.<Task>of()).anyTimes();
+    expect(indexerMetadataStorageCoordinator.resetDataSourceMetadata(DATASOURCE, new JDBCDataSourceMetadata(
+        new JDBCOffsets(table, offsets)
+    ))).andReturn(true).anyTimes();
+    expect(indexerMetadataStorageCoordinator.getDataSourceMetadata(DATASOURCE)).andReturn(
+        new JDBCDataSourceMetadata(
+            new JDBCOffsets(table, offsets)
+        )
+    ).anyTimes();
+    expect(taskQueue.add(capture(captured))).andReturn(true).times(2);
+    taskRunner.registerListener(anyObject(TaskRunnerListener.class), anyObject(Executor.class));
+    replayAll();
+
+    supervisor.start();
+    supervisor.runInternal();
+    verifyAll();
+
+    List<Task> tasks = captured.getValues();
+    Collection workItems = new ArrayList<>();
+    for (Task task : tasks) {
+      workItems.add(new TestTaskRunnerWorkItem(task.getId(), null, location));
     }
 
-    @Test
-    /**
-     * Test generating the starting offsets from the partition data stored in druid_dataSource which contains the
-     * offsets of the last built segments.
-     */
-    public void testDatasourceMetadata() throws Exception {
-        supervisor = getSupervisor(1, 1, "PT1H", null);
+    reset(taskStorage, taskRunner, taskClient, taskQueue);
+    captured = Capture.newInstance(CaptureType.ALL);
+    expect(taskStorage.getActiveTasks()).andReturn(tasks).anyTimes();
+    for (Task task : tasks) {
+      expect(taskStorage.getStatus(task.getId())).andReturn(Optional.of(TaskStatus.running(task.getId()))).anyTimes();
+      expect(taskStorage.getTask(task.getId())).andReturn(Optional.of(task)).anyTimes();
+    }
+    expect(taskRunner.getRunningTasks()).andReturn(workItems).anyTimes();
+    expect(taskClient.getStatusAsync(anyString()))
+        .andReturn(Futures.immediateFuture(JDBCIndexTask.Status.READING))
+        .anyTimes();
+    expect(taskClient.getStartTimeAsync(EasyMock.contains("sequenceName-0")))
+        .andReturn(Futures.immediateFuture(DateTime.now().minusMinutes(1)))
+        .andReturn(Futures.immediateFuture(DateTime.now()));
+    taskQueue.shutdown(EasyMock.contains("sequenceName-0"));
+    taskQueue.shutdown(EasyMock.contains("sequenceName-0"));
+    expect(taskClient.pauseAsync(EasyMock.contains("sequenceName-0")))
+        .andReturn(Futures.immediateFuture((Map<Integer, Integer>) ImmutableMap.of(0, 10)))
+        .andReturn(Futures.immediateFuture((Map<Integer, Integer>) ImmutableMap.of(0, 10)));
+    expectLastCall().times(1);
+    expect(taskQueue.add(capture(captured))).andReturn(true).times(2);
+    replay(taskStorage, taskRunner, taskClient, taskQueue);
 
-        Capture<JDBCIndexTask> captured = Capture.newInstance();
-        expect(taskMaster.getTaskQueue()).andReturn(Optional.of(taskQueue)).anyTimes();
-        expect(taskMaster.getTaskRunner()).andReturn(Optional.<TaskRunner>absent()).anyTimes();
-        expect(taskStorage.getActiveTasks()).andReturn(ImmutableList.<Task>of()).anyTimes();
-        expect(indexerMetadataStorageCoordinator.getDataSourceMetadata(DATASOURCE)).andReturn(
-                new JDBCDataSourceMetadata(new JDBCOffsets(table, offsets, interval))
-        ).anyTimes();
-        expect(taskQueue.add(capture(captured))).andReturn(true);
-        replayAll();
+    supervisor.runInternal();
+    verifyAll();
 
-        supervisor.start();
-        supervisor.runInternal();
-        verifyAll();
+    for (Task task : captured.getValues()) {
+      JDBCIOConfig taskConfig = ((JDBCIndexTask) task).getIOConfig();
+      Assert.assertEquals(taskConfig.getJdbcOffsets().getOffsetMaps().values().toArray()[0], 10);
+    }
+  }
 
-        JDBCIndexTask task = captured.getValue();
-        JDBCIOConfig taskConfig = task.getIOConfig();
-        Assert.assertEquals("sequenceName-0", taskConfig.getBaseSequenceName());
-        Assert.assertEquals(task.getIOConfig().getPartitions().getOffsetMaps().keySet().toArray()[0], 0);
-        Assert.assertEquals(task.getIOConfig().getPartitions().getOffsetMaps().values().toArray()[0], 10);
+  @Test
+  public void testKillUnresponsiveTasksWhileSettingEndOffsets() throws Exception {
+    final TaskLocation location = new TaskLocation("testHost", 1234, -1);
+
+    supervisor = getSupervisor(2, 1, "PT1M", null);
+
+    Capture<Task> captured = Capture.newInstance(CaptureType.ALL);
+    expect(taskMaster.getTaskQueue()).andReturn(Optional.of(taskQueue)).anyTimes();
+    expect(taskMaster.getTaskRunner()).andReturn(Optional.of(taskRunner)).anyTimes();
+    expect(taskRunner.getRunningTasks()).andReturn(Collections.EMPTY_LIST).anyTimes();
+    expect(taskStorage.getActiveTasks()).andReturn(ImmutableList.<Task>of()).anyTimes();
+    expect(indexerMetadataStorageCoordinator.resetDataSourceMetadata(DATASOURCE, new JDBCDataSourceMetadata(
+        new JDBCOffsets(table, offsets)
+    ))).andReturn(true).anyTimes();
+    expect(indexerMetadataStorageCoordinator.getDataSourceMetadata(DATASOURCE)).andReturn(
+        new JDBCDataSourceMetadata(
+            new JDBCOffsets(table, offsets)
+        )
+    ).anyTimes();
+    expect(taskQueue.add(capture(captured))).andReturn(true).times(2);
+    taskRunner.registerListener(anyObject(TaskRunnerListener.class), anyObject(Executor.class));
+    replayAll();
+
+    supervisor.start();
+    supervisor.runInternal();
+    verifyAll();
+
+    List<Task> tasks = captured.getValues();
+    Collection workItems = new ArrayList<>();
+    for (Task task : tasks) {
+      workItems.add(new TestTaskRunnerWorkItem(task.getId(), null, location));
     }
 
-    @Test
-    public void testKillIncompatibleTasks() throws Exception {
-        supervisor = getSupervisor(2, 1, "PT1H", null);
-        Task id1 = createJDBCIndexTask( // unexpected # of partitions (kill)
-                "id1",
-                DATASOURCE,
-                "index_jdbc_testDS__some_other_sequenceName",
-                new JDBCOffsets(table, offsets, interval),
-                null
-        );
-
-        Task id2 = createJDBCIndexTask( // correct number of partitions and ranges (don't kill)
-                "id2",
-                DATASOURCE,
-                "sequenceName-0",
-                new JDBCOffsets(table, offsets, interval),
-                null
-        );
-
-        Task id3 = createJDBCIndexTask( // unexpected range on partition 2 (kill)
-                "id3",
-                DATASOURCE,
-                "index_jdbc_testDS__some_other_sequenceName",
-                new JDBCOffsets(table, offsets, interval),
-                null
-        );
-
-        Task id4 = createJDBCIndexTask( // different datasource (don't kill)
-                "id4",
-                "other-datasource",
-                "index_jdbc_testDS_d927edff33c4b3f",
-                new JDBCOffsets(table, offsets, interval),
-                null
-        );
-
-        Task id5 = new RealtimeIndexTask( // non JDBCIndexTask (don't kill)
-                "id5",
-                null,
-                new FireDepartment(
-                        dataSchema,
-                        new RealtimeIOConfig(null, null, null),
-                        null
-                ),
-                null
-        );
-
-        List<Task> existingTasks = ImmutableList.of(id1, id2, id3, id4, id5);
-
-        expect(taskMaster.getTaskQueue()).andReturn(Optional.of(taskQueue)).anyTimes();
-        expect(taskMaster.getTaskRunner()).andReturn(Optional.of(taskRunner)).anyTimes();
-        expect(taskRunner.getRunningTasks()).andReturn(Collections.EMPTY_LIST).anyTimes();
-        expect(taskStorage.getActiveTasks()).andReturn(existingTasks).anyTimes();
-        expect(taskStorage.getStatus("id1")).andReturn(Optional.of(TaskStatus.running("id1"))).anyTimes();
-        expect(taskStorage.getStatus("id2")).andReturn(Optional.of(TaskStatus.running("id2"))).anyTimes();
-        expect(taskStorage.getStatus("id3")).andReturn(Optional.of(TaskStatus.running("id3"))).anyTimes();
-        expect(taskStorage.getTask("id1")).andReturn(Optional.of(id1)).anyTimes();
-        expect(taskStorage.getTask("id2")).andReturn(Optional.of(id2)).anyTimes();
-        expect(taskStorage.getTask("id3")).andReturn(Optional.of(id3)).anyTimes();
-        expect(taskClient.getStatusAsync(anyString())).andReturn(Futures.immediateFuture(JDBCIndexTask.Status.NOT_STARTED))
-                .anyTimes();
-        expect(taskClient.getStartTimeAsync(anyString())).andReturn(Futures.immediateFuture(DateTime.now())).anyTimes();
-        expect(indexerMetadataStorageCoordinator.getDataSourceMetadata(DATASOURCE)).andReturn(
-                new JDBCDataSourceMetadata(
-                        new JDBCOffsets(table, offsets, interval)
-                )
-        ).anyTimes();
-        expect(taskClient.stopAsync("id1", false)).andReturn(Futures.immediateFuture(true));
-        expect(taskClient.stopAsync("id3", false)).andReturn(Futures.immediateFuture(false));
-        taskRunner.registerListener(anyObject(TaskRunnerListener.class), anyObject(Executor.class));
-        taskQueue.shutdown("id3");
-
-        expect(taskQueue.add(anyObject(Task.class))).andReturn(true);
-        replayAll();
-        supervisor.start();
-        supervisor.runInternal();
-        verifyAll();
+    reset(taskStorage, taskRunner, taskClient, taskQueue);
+    captured = Capture.newInstance(CaptureType.ALL);
+    expect(taskStorage.getActiveTasks()).andReturn(tasks).anyTimes();
+    for (Task task : tasks) {
+      expect(taskStorage.getStatus(task.getId())).andReturn(Optional.of(TaskStatus.running(task.getId()))).anyTimes();
+      expect(taskStorage.getTask(task.getId())).andReturn(Optional.of(task)).anyTimes();
     }
+    expect(taskRunner.getRunningTasks()).andReturn(workItems).anyTimes();
+    expect(taskClient.getStatusAsync(anyString()))
+        .andReturn(Futures.immediateFuture(JDBCIndexTask.Status.READING))
+        .anyTimes();
+    expect(taskClient.getStartTimeAsync(EasyMock.contains("sequenceName-0")))
+        .andReturn(Futures.immediateFuture(DateTime.now().minusMinutes(2)))
+        .andReturn(Futures.immediateFuture(DateTime.now()));
+    taskQueue.shutdown(EasyMock.contains("sequenceName-0"));
+    expectLastCall().times(2);
+    expect(taskQueue.add(capture(captured))).andReturn(true).times(2);
+    expect(taskClient.pauseAsync(EasyMock.contains("sequenceName-0")))
+        .andReturn(Futures.immediateFuture((Map<Integer, Integer>) ImmutableMap.of(0, 10)))
+        .andReturn(Futures.immediateFuture((Map<Integer, Integer>) ImmutableMap.of(0, 10)));
+    replay(taskStorage, taskRunner, taskClient, taskQueue);
+    supervisor.runInternal();
+    verifyAll();
 
-    @Test
-    public void testRequeueTaskWhenFailed() throws Exception {
-        supervisor = getSupervisor(2, 1, "PT1H", null);
-        Capture<Task> captured = Capture.newInstance(CaptureType.ALL);
-        expect(taskMaster.getTaskQueue()).andReturn(Optional.of(taskQueue)).anyTimes();
-        expect(taskMaster.getTaskRunner()).andReturn(Optional.of(taskRunner)).anyTimes();
-        expect(taskRunner.getRunningTasks()).andReturn(Collections.EMPTY_LIST).anyTimes();
-        expect(taskStorage.getActiveTasks()).andReturn(ImmutableList.<Task>of()).anyTimes();
-        expect(taskClient.getStatusAsync(anyString())).andReturn(Futures.immediateFuture(JDBCIndexTask.Status.NOT_STARTED))
-                .anyTimes();
-        expect(taskClient.getStartTimeAsync(anyString())).andReturn(Futures.immediateFuture(DateTime.now())).anyTimes();
-        expect(indexerMetadataStorageCoordinator.getDataSourceMetadata(DATASOURCE)).andReturn(
-                new JDBCDataSourceMetadata(
-                        new JDBCOffsets(table, offsets, interval)
-                )
-        ).anyTimes();
-        expect(taskQueue.add(capture(captured))).andReturn(true).times(2);
-        taskRunner.registerListener(anyObject(TaskRunnerListener.class), anyObject(Executor.class));
-        replayAll();
-
-        supervisor.start();
-        supervisor.runInternal();
-        verifyAll();
-
-        List<Task> tasks = captured.getValues();
-
-        // test that running the main loop again checks the status of the tasks that were created and does nothing if they
-        // are all still running
-        reset(taskStorage);
-        expect(taskStorage.getActiveTasks()).andReturn(tasks).anyTimes();
-        for (Task task : tasks) {
-            expect(taskStorage.getStatus(task.getId())).andReturn(Optional.of(TaskStatus.running(task.getId()))).anyTimes();
-            expect(taskStorage.getTask(task.getId())).andReturn(Optional.of(task)).anyTimes();
-        }
-        replay(taskStorage);
-
-        supervisor.runInternal();
-        verifyAll();
-
-        // test that a task failing causes a new task to be re-queued with the same parameters
-        Capture<Task> aNewTaskCapture = Capture.newInstance();
-        List<Task> imStillAlive = tasks.subList(0, 1);
-        JDBCIndexTask iHaveFailed = (JDBCIndexTask) tasks.get(1);
-        reset(taskStorage);
-        reset(taskQueue);
-        expect(taskStorage.getActiveTasks()).andReturn(imStillAlive).anyTimes();
-        for (Task task : imStillAlive) {
-            expect(taskStorage.getStatus(task.getId())).andReturn(Optional.of(TaskStatus.running(task.getId()))).anyTimes();
-            expect(taskStorage.getTask(task.getId())).andReturn(Optional.of(task)).anyTimes();
-        }
-        expect(taskStorage.getStatus(iHaveFailed.getId())).andReturn(Optional.of(TaskStatus.failure(iHaveFailed.getId())));
-        expect(taskStorage.getTask(iHaveFailed.getId())).andReturn(Optional.of((Task) iHaveFailed)).anyTimes();
-        expect(taskQueue.add(capture(aNewTaskCapture))).andReturn(true);
-        replay(taskStorage);
-        replay(taskQueue);
-
-        supervisor.runInternal();
-        verifyAll();
-
-        Assert.assertNotEquals(iHaveFailed.getId(), aNewTaskCapture.getValue().getId());
-        Assert.assertEquals(
-                iHaveFailed.getIOConfig().getBaseSequenceName(),
-                ((JDBCIndexTask) aNewTaskCapture.getValue()).getIOConfig().getBaseSequenceName()
-        );
+    for (Task task : captured.getValues()) {
+      JDBCIOConfig taskConfig = ((JDBCIndexTask) task).getIOConfig();
+      Assert.assertEquals(taskConfig.getJdbcOffsets().getOffsetMaps().values().toArray()[0], 10);
     }
-
-    @Test
-    public void testRequeueAdoptedTaskWhenFailed() throws Exception {
-        supervisor = getSupervisor(2, 1, "PT1H", null);
-
-        DateTime now = DateTime.now();
-        Task id1 = createJDBCIndexTask(
-                "id1",
-                DATASOURCE,
-                "sequenceName-0",
-                new JDBCOffsets(table, offsets, interval),
-                now
-        );
-
-        List<Task> existingTasks = ImmutableList.of(id1);
-
-        Capture<Task> captured = Capture.newInstance();
-        expect(taskMaster.getTaskQueue()).andReturn(Optional.of(taskQueue)).anyTimes();
-        expect(taskMaster.getTaskRunner()).andReturn(Optional.of(taskRunner)).anyTimes();
-        expect(taskRunner.getRunningTasks()).andReturn(Collections.EMPTY_LIST).anyTimes();
-        expect(taskStorage.getActiveTasks()).andReturn(existingTasks).anyTimes();
-        expect(taskStorage.getStatus("id1")).andReturn(Optional.of(TaskStatus.running("id1"))).anyTimes();
-        expect(taskStorage.getTask("id1")).andReturn(Optional.of(id1)).anyTimes();
-        expect(taskClient.getStatusAsync("id1")).andReturn(Futures.immediateFuture(JDBCIndexTask.Status.READING));
-        expect(taskClient.getStartTimeAsync("id1")).andReturn(Futures.immediateFuture(now)).anyTimes();
-        expect(taskQueue.add(capture(captured))).andReturn(true);
-        expect(indexerMetadataStorageCoordinator.getDataSourceMetadata(DATASOURCE)).andReturn(
-                new JDBCDataSourceMetadata(
-                        new JDBCOffsets(table, offsets, interval)
-                )
-        ).anyTimes();
-        taskRunner.registerListener(anyObject(TaskRunnerListener.class), anyObject(Executor.class));
-        replayAll();
-
-        supervisor.start();
-        supervisor.runInternal();
-        verifyAll();
-
-        // check that replica tasks are created with the same minimumMessageTime as tasks inherited from another supervisor
-        Assert.assertEquals(now, ((JDBCIndexTask) captured.getValue()).getIOConfig().getMinimumMessageTime().get());
-
-        // test that a task failing causes a new task to be re-queued with the same parameters
-        String runningTaskId = captured.getValue().getId();
-        Capture<Task> aNewTaskCapture = Capture.newInstance();
-        JDBCIndexTask iHaveFailed = (JDBCIndexTask) existingTasks.get(0);
-        reset(taskStorage);
-        reset(taskQueue);
-        reset(taskClient);
-        expect(taskStorage.getActiveTasks()).andReturn(ImmutableList.of(captured.getValue())).anyTimes();
-        expect(taskStorage.getStatus(iHaveFailed.getId())).andReturn(Optional.of(TaskStatus.failure(iHaveFailed.getId())));
-        expect(taskStorage.getStatus(runningTaskId)).andReturn(Optional.of(TaskStatus.running(runningTaskId))).anyTimes();
-        expect(taskStorage.getTask(iHaveFailed.getId())).andReturn(Optional.of((Task) iHaveFailed)).anyTimes();
-        expect(taskStorage.getTask(runningTaskId)).andReturn(Optional.of(captured.getValue())).anyTimes();
-        expect(taskClient.getStatusAsync(runningTaskId)).andReturn(Futures.immediateFuture(JDBCIndexTask.Status.READING));
-        expect(taskClient.getStartTimeAsync(runningTaskId)).andReturn(Futures.immediateFuture(now)).anyTimes();
-        expect(taskQueue.add(capture(aNewTaskCapture))).andReturn(true);
-        replay(taskStorage);
-        replay(taskQueue);
-        replay(taskClient);
-
-        supervisor.runInternal();
-        verifyAll();
-
-        Assert.assertNotEquals(iHaveFailed.getId(), aNewTaskCapture.getValue().getId());
-        Assert.assertEquals(
-                iHaveFailed.getIOConfig().getBaseSequenceName(),
-                ((JDBCIndexTask) aNewTaskCapture.getValue()).getIOConfig().getBaseSequenceName()
-        );
-
-        // check that failed tasks are recreated with the same minimumMessageTime as the task it replaced, even if that
-        // task came from another supervisor
-        Assert.assertEquals(now, ((JDBCIndexTask) aNewTaskCapture.getValue()).getIOConfig().getMinimumMessageTime().get());
-    }
-
-    @Test
-    public void testQueueNextTasksOnSuccess() throws Exception {
-        supervisor = getSupervisor(2, 1, "PT1H", null);
-
-        Capture<Task> captured = Capture.newInstance(CaptureType.ALL);
-        expect(taskMaster.getTaskQueue()).andReturn(Optional.of(taskQueue)).anyTimes();
-        expect(taskMaster.getTaskRunner()).andReturn(Optional.of(taskRunner)).anyTimes();
-        expect(taskRunner.getRunningTasks()).andReturn(Collections.EMPTY_LIST).anyTimes();
-        expect(taskStorage.getActiveTasks()).andReturn(ImmutableList.<Task>of()).anyTimes();
-        expect(taskClient.getStatusAsync(anyString())).andReturn(Futures.immediateFuture(JDBCIndexTask.Status.NOT_STARTED))
-                .anyTimes();
-        expect(taskClient.getStartTimeAsync(anyString())).andReturn(Futures.immediateFuture(DateTime.now())).anyTimes();
-        expect(indexerMetadataStorageCoordinator.getDataSourceMetadata(DATASOURCE)).andReturn(
-                new JDBCDataSourceMetadata(
-                        new JDBCOffsets(table, offsets, interval)
-                )
-        ).anyTimes();
-        expect(taskQueue.add(capture(captured))).andReturn(true).times(2);
-        taskRunner.registerListener(anyObject(TaskRunnerListener.class), anyObject(Executor.class));
-        replayAll();
-
-        supervisor.start();
-        supervisor.runInternal();
-        verifyAll();
-
-        List<Task> tasks = captured.getValues();
-
-        reset(taskStorage);
-        expect(taskStorage.getActiveTasks()).andReturn(tasks).anyTimes();
-        for (Task task : tasks) {
-            expect(taskStorage.getStatus(task.getId())).andReturn(Optional.of(TaskStatus.running(task.getId()))).anyTimes();
-            expect(taskStorage.getTask(task.getId())).andReturn(Optional.of(task)).anyTimes();
-        }
-        replay(taskStorage);
-
-        supervisor.runInternal();
-        verifyAll();
-
-        // test that a task succeeding causes a new task to be re-queued with the next offset range and causes any replica
-        // tasks to be shutdown
-        Capture<Task> newTasksCapture = Capture.newInstance(CaptureType.ALL);
-        Capture<String> shutdownTaskIdCapture = Capture.newInstance();
-        List<Task> imStillRunning = tasks.subList(1, 2);
-        JDBCIndexTask iAmSuccess = (JDBCIndexTask) tasks.get(0);
-        reset(taskStorage);
-        reset(taskQueue);
-        reset(taskClient);
-        expect(taskStorage.getActiveTasks()).andReturn(imStillRunning).anyTimes();
-        for (Task task : imStillRunning) {
-            expect(taskStorage.getStatus(task.getId())).andReturn(Optional.of(TaskStatus.running(task.getId()))).anyTimes();
-            expect(taskStorage.getTask(task.getId())).andReturn(Optional.of(task)).anyTimes();
-        }
-        expect(taskStorage.getStatus(iAmSuccess.getId())).andReturn(Optional.of(TaskStatus.success(iAmSuccess.getId())));
-        expect(taskStorage.getTask(iAmSuccess.getId())).andReturn(Optional.of((Task) iAmSuccess)).anyTimes();
-        expect(taskQueue.add(capture(newTasksCapture))).andReturn(true).times(2);
-        expect(taskClient.stopAsync(capture(shutdownTaskIdCapture), eq(false))).andReturn(Futures.immediateFuture(true));
-        replay(taskStorage);
-        replay(taskQueue);
-        replay(taskClient);
-
-        supervisor.runInternal();
-        verifyAll();
-
-        // make sure we killed the right task (sequenceName for replicas are the same)
-        Assert.assertTrue(shutdownTaskIdCapture.getValue().contains(iAmSuccess.getIOConfig().getBaseSequenceName()));
-    }
-
-
-    @Test
-    public void testBeginPublishAndQueueNextTasks() throws Exception {
-        final TaskLocation location = new TaskLocation("testHost", 1234, -1);
-
-        supervisor = getSupervisor(2, 1, "PT1M", null);
-
-        Capture<Task> captured = Capture.newInstance(CaptureType.ALL);
-        expect(taskMaster.getTaskQueue()).andReturn(Optional.of(taskQueue)).anyTimes();
-        expect(taskMaster.getTaskRunner()).andReturn(Optional.of(taskRunner)).anyTimes();
-        expect(taskRunner.getRunningTasks()).andReturn(Collections.EMPTY_LIST).anyTimes();
-        expect(taskStorage.getActiveTasks()).andReturn(ImmutableList.<Task>of()).anyTimes();
-        expect(indexerMetadataStorageCoordinator.getDataSourceMetadata(DATASOURCE)).andReturn(
-                new JDBCDataSourceMetadata(
-                        null
-                )
-        ).anyTimes();
-        expect(taskQueue.add(capture(captured))).andReturn(true).times(2);
-        taskRunner.registerListener(anyObject(TaskRunnerListener.class), anyObject(Executor.class));
-        replayAll();
-
-        supervisor.start();
-        supervisor.runInternal();
-        verifyAll();
-
-        List<Task> tasks = captured.getValues();
-        Collection workItems = new ArrayList<>();
-        for (Task task : tasks) {
-            workItems.add(new TestTaskRunnerWorkItem(task.getId(), null, location));
-        }
-
-        reset(taskStorage, taskRunner, taskClient, taskQueue);
-        captured = Capture.newInstance(CaptureType.ALL);
-        expect(taskStorage.getActiveTasks()).andReturn(tasks).anyTimes();
-        for (Task task : tasks) {
-            expect(taskStorage.getStatus(task.getId())).andReturn(Optional.of(TaskStatus.running(task.getId()))).anyTimes();
-            expect(taskStorage.getTask(task.getId())).andReturn(Optional.of(task)).anyTimes();
-        }
-        expect(taskRunner.getRunningTasks()).andReturn(workItems).anyTimes();
-        expect(taskClient.getStatusAsync(anyString()))
-                .andReturn(Futures.immediateFuture(JDBCIndexTask.Status.READING))
-                .anyTimes();
-        expect(taskClient.getStartTimeAsync(EasyMock.contains("sequenceName-0")))
-                .andReturn(Futures.immediateFuture(DateTime.now().minusMinutes(1)))
-                .andReturn(Futures.immediateFuture(DateTime.now()));
-        expect(taskClient.pauseAsync(EasyMock.contains("sequenceName-0")))
-                .andReturn(Futures.immediateFuture((Map<Integer, Integer>) ImmutableMap.of(0, 10)))
-                .andReturn(Futures.immediateFuture((Map<Integer, Integer>) ImmutableMap.of(0, 10)));
-        expect(taskQueue.add(capture(captured))).andReturn(true).times(2);
-        taskQueue.shutdown(EasyMock.contains("sequenceName-0"));
-        expectLastCall().times(2);
-        replay(taskStorage, taskRunner, taskClient, taskQueue);
-
-        supervisor.runInternal();
-        verifyAll();
-
-        for (Task task : captured.getValues()) {
-            JDBCIndexTask jdbcIndexTask = (JDBCIndexTask) task;
-            Assert.assertEquals(dataSchema, jdbcIndexTask.getDataSchema());
-            Assert.assertEquals(JDBCTuningConfig.copyOf(tuningConfig), jdbcIndexTask.getTuningConfig());
-
-            JDBCIOConfig taskConfig = jdbcIndexTask.getIOConfig();
-            Assert.assertEquals("sequenceName-0", taskConfig.getBaseSequenceName());
-            Assert.assertTrue("isUseTransaction", taskConfig.isUseTransaction());
-            Assert.assertFalse("pauseAfterRead", taskConfig.isPauseAfterRead());
-
-            Assert.assertEquals(table, taskConfig.getPartitions().getTable());
-            Assert.assertEquals(10, (long) taskConfig.getPartitions().getOffsetMaps().get(0));
-        }
-    }
-
-    @Test
-    public void testDiscoverExistingPublishingTask() throws Exception {
-        final TaskLocation location = new TaskLocation("testHost", 1234, -1);
-
-        supervisor = getSupervisor(1, 1, "PT1H", null);
-
-        Task task = createJDBCIndexTask(
-                "id1",
-                DATASOURCE,
-                "sequenceName-0",
-                new JDBCOffsets(table, offsets, interval),
-                null
-        );
-
-        Collection workItems = new ArrayList<>();
-        workItems.add(new TestTaskRunnerWorkItem(task.getId(), null, location));
-
-        Capture<JDBCIndexTask> captured = Capture.newInstance();
-        expect(taskMaster.getTaskQueue()).andReturn(Optional.of(taskQueue)).anyTimes();
-        expect(taskMaster.getTaskRunner()).andReturn(Optional.of(taskRunner)).anyTimes();
-        expect(taskRunner.getRunningTasks()).andReturn(workItems).anyTimes();
-        expect(taskStorage.getActiveTasks()).andReturn(ImmutableList.of(task)).anyTimes();
-        expect(taskStorage.getStatus("id1")).andReturn(Optional.of(TaskStatus.running("id1"))).anyTimes();
-        expect(taskStorage.getTask("id1")).andReturn(Optional.of(task)).anyTimes();
-        expect(indexerMetadataStorageCoordinator.getDataSourceMetadata(DATASOURCE)).andReturn(
-                new JDBCDataSourceMetadata(
-                        new JDBCOffsets(table, offsets, interval)
-                )
-        ).anyTimes();
-        expect(taskClient.getStatusAsync("id1")).andReturn(Futures.immediateFuture(JDBCIndexTask.Status.PUBLISHING));
-        expect(taskClient.getCurrentOffsetsAsync("id1", false))
-                .andReturn(Futures.immediateFuture(new HashMap<>(0, 10)));
-        expect(taskClient.getCurrentOffsets("id1", true)).andReturn(new HashMap<>(0, 10));
-        expect(taskQueue.add(capture(captured))).andReturn(true);
-
-        taskRunner.registerListener(anyObject(TaskRunnerListener.class), anyObject(Executor.class));
-        replayAll();
-
-        supervisor.start();
-        supervisor.runInternal();
-        supervisor.updateCurrentAndLatestOffsets().run();
-        SupervisorReport report = supervisor.getStatus();
-        verifyAll();
-
-        Assert.assertEquals(DATASOURCE, report.getId());
-        Assert.assertTrue(report.getPayload() instanceof JDBCSupervisorReport.JDBCSupervisorReportPayload);
-
-        JDBCSupervisorReport.JDBCSupervisorReportPayload payload = (JDBCSupervisorReport.JDBCSupervisorReportPayload)
-                report.getPayload();
-
-        Assert.assertEquals(DATASOURCE, payload.getDataSource());
-        Assert.assertEquals(3600L, (long) payload.getDurationSeconds());
-        Assert.assertEquals(1, (int) payload.getReplicas());
-        Assert.assertEquals(table, payload.getTable());
-        Assert.assertEquals(0, payload.getActiveTasks().size());
-        Assert.assertEquals(1, payload.getPublishingTasks().size());
-
-        TaskReportData publishingReport = payload.getPublishingTasks().get(0);
-
-        Assert.assertEquals("id1", publishingReport.getId());
-        Assert.assertEquals(publishingReport.getOffsets().values().toArray()[0], 10);
-
-
-        JDBCIndexTask capturedTask = captured.getValue();
-        Assert.assertEquals(dataSchema, capturedTask.getDataSchema());
-        Assert.assertEquals(JDBCTuningConfig.copyOf(tuningConfig), capturedTask.getTuningConfig());
-
-        JDBCIOConfig capturedTaskConfig = capturedTask.getIOConfig();
-        Assert.assertEquals("sequenceName-0", capturedTaskConfig.getBaseSequenceName());
-        Assert.assertTrue("isUseTransaction", capturedTaskConfig.isUseTransaction());
-        Assert.assertFalse("pauseAfterRead", capturedTaskConfig.isPauseAfterRead());
-
-        // check that the new task was created with starting offsets matching where the publishing task finished
-        Assert.assertEquals(table, capturedTaskConfig.getPartitions().getTable());
-        Assert.assertEquals(capturedTaskConfig.getPartitions().getOffsetMaps().values().toArray()[0], 10);
-
-    }
-
-    @Test
-    public void testDiscoverExistingPublishingTaskWithDifferentPartitionAllocation() throws Exception {
-        final TaskLocation location = new TaskLocation("testHost", 1234, -1);
-
-        supervisor = getSupervisor(1, 1, "PT1H", null);
-
-        Task task = createJDBCIndexTask(
-                "id1",
-                DATASOURCE,
-                "sequenceName-0",
-                new JDBCOffsets(table, offsets, interval),
-                null
-        );
-
-        Collection workItems = new ArrayList<>();
-        workItems.add(new TestTaskRunnerWorkItem(task.getId(), null, location));
-
-        Capture<JDBCIndexTask> captured = Capture.newInstance();
-        expect(taskMaster.getTaskQueue()).andReturn(Optional.of(taskQueue)).anyTimes();
-        expect(taskMaster.getTaskRunner()).andReturn(Optional.of(taskRunner)).anyTimes();
-        expect(taskRunner.getRunningTasks()).andReturn(workItems).anyTimes();
-        expect(taskStorage.getActiveTasks()).andReturn(ImmutableList.of(task)).anyTimes();
-        expect(taskStorage.getStatus("id1")).andReturn(Optional.of(TaskStatus.running("id1"))).anyTimes();
-        expect(taskStorage.getTask("id1")).andReturn(Optional.of(task)).anyTimes();
-        expect(indexerMetadataStorageCoordinator.getDataSourceMetadata(DATASOURCE)).andReturn(
-                new JDBCDataSourceMetadata(
-                        null
-                )
-        ).anyTimes();
-        expect(taskClient.getStatusAsync("id1")).andReturn(Futures.immediateFuture(JDBCIndexTask.Status.PUBLISHING));
-        expect(taskClient.getCurrentOffsetsAsync("id1", false))
-                .andReturn(Futures.immediateFuture(new HashMap<>(0, 10)));
-        expect(taskClient.getCurrentOffsets("id1", true)).andReturn(new HashMap<>(0, 10));
-        expect(taskQueue.add(capture(captured))).andReturn(true);
-
-        taskRunner.registerListener(anyObject(TaskRunnerListener.class), anyObject(Executor.class));
-        replayAll();
-
-        supervisor.start();
-        supervisor.runInternal();
-        supervisor.updateCurrentAndLatestOffsets().run();
-        SupervisorReport report = supervisor.getStatus();
-        verifyAll();
-
-        Assert.assertEquals(DATASOURCE, report.getId());
-        Assert.assertTrue(report.getPayload() instanceof JDBCSupervisorReport.JDBCSupervisorReportPayload);
-
-        JDBCSupervisorReport.JDBCSupervisorReportPayload payload = (JDBCSupervisorReport.JDBCSupervisorReportPayload)
-                report.getPayload();
-
-        Assert.assertEquals(DATASOURCE, payload.getDataSource());
-        Assert.assertEquals(3600L, (long) payload.getDurationSeconds());
-        Assert.assertEquals(1, (int) payload.getReplicas());
-        Assert.assertEquals(table, payload.getTable());
-        Assert.assertEquals(0, payload.getActiveTasks().size());
-        Assert.assertEquals(1, payload.getPublishingTasks().size());
-
-        TaskReportData publishingReport = payload.getPublishingTasks().get(0);
-
-        Assert.assertEquals("id1", publishingReport.getId());
-        Assert.assertEquals(publishingReport.getOffsets().values().toArray()[0], 10);
-
-        JDBCIndexTask capturedTask = captured.getValue();
-        Assert.assertEquals(dataSchema, capturedTask.getDataSchema());
-        Assert.assertEquals(JDBCTuningConfig.copyOf(tuningConfig), capturedTask.getTuningConfig());
-
-        JDBCIOConfig capturedTaskConfig = capturedTask.getIOConfig();
-        Assert.assertEquals("sequenceName-0", capturedTaskConfig.getBaseSequenceName());
-        Assert.assertTrue("isUseTransaction", capturedTaskConfig.isUseTransaction());
-        Assert.assertFalse("pauseAfterRead", capturedTaskConfig.isPauseAfterRead());
-
-        // check that the new task was created with starting offsets matching where the publishing task finished
-        Assert.assertEquals(table, capturedTaskConfig.getPartitions().getTable());
-        Assert.assertEquals(capturedTaskConfig.getPartitions().getOffsetMaps().values().toArray()[0], 10);
-
-    }
-
-    @Test
-    public void testDiscoverExistingPublishingAndReadingTask() throws Exception {
-        final TaskLocation location1 = new TaskLocation("testHost", 1234, -1);
-        final TaskLocation location2 = new TaskLocation("testHost2", 145, -1);
-        final DateTime startTime = new DateTime();
-
-        supervisor = getSupervisor(1, 1, "PT1H", null);
-
-        Task id1 = createJDBCIndexTask(
-                "id1",
-                DATASOURCE,
-                "sequenceName-0",
-                new JDBCOffsets(table, offsets, interval),
-                null
-        );
-
-        Task id2 = createJDBCIndexTask(
-                "id2",
-                DATASOURCE,
-                "sequenceName-0",
-                new JDBCOffsets(table, offsets, interval),
-                null
-        );
-
-        Collection workItems = new ArrayList<>();
-        workItems.add(new TestTaskRunnerWorkItem(id1.getId(), null, location1));
-        workItems.add(new TestTaskRunnerWorkItem(id2.getId(), null, location2));
-
-        expect(taskMaster.getTaskQueue()).andReturn(Optional.of(taskQueue)).anyTimes();
-        expect(taskMaster.getTaskRunner()).andReturn(Optional.of(taskRunner)).anyTimes();
-        expect(taskRunner.getRunningTasks()).andReturn(workItems).anyTimes();
-        expect(taskStorage.getActiveTasks()).andReturn(ImmutableList.of(id1, id2)).anyTimes();
-        expect(taskStorage.getStatus("id1")).andReturn(Optional.of(TaskStatus.running("id1"))).anyTimes();
-        expect(taskStorage.getStatus("id2")).andReturn(Optional.of(TaskStatus.running("id2"))).anyTimes();
-        expect(taskStorage.getTask("id1")).andReturn(Optional.of(id1)).anyTimes();
-        expect(taskStorage.getTask("id2")).andReturn(Optional.of(id2)).anyTimes();
-        expect(indexerMetadataStorageCoordinator.getDataSourceMetadata(DATASOURCE)).andReturn(
-                new JDBCDataSourceMetadata(
-                        new JDBCOffsets(table, offsets, interval)
-                )
-        ).anyTimes();
-        expect(taskClient.getStatusAsync("id1")).andReturn(Futures.immediateFuture(JDBCIndexTask.Status.PUBLISHING));
-        expect(taskClient.getStatusAsync("id2")).andReturn(Futures.immediateFuture(JDBCIndexTask.Status.READING));
-        expect(taskClient.getStartTimeAsync("id2")).andReturn(Futures.immediateFuture(startTime));
-        expect(taskClient.getCurrentOffsetsAsync("id1", false))
-                .andReturn(Futures.immediateFuture(new HashMap<>(0, 10)));
-        expect(taskClient.getCurrentOffsets("id1", true)).andReturn(new HashMap<>(0, 10));
-        expect(taskClient.getCurrentOffsetsAsync("id2", false))
-                .andReturn(Futures.immediateFuture(new HashMap<>(0, 10)));
-
-        taskRunner.registerListener(anyObject(TaskRunnerListener.class), anyObject(Executor.class));
-        replayAll();
-
-        supervisor.start();
-        supervisor.runInternal();
-        supervisor.updateCurrentAndLatestOffsets().run();
-        SupervisorReport report = supervisor.getStatus();
-        verifyAll();
-
-        Assert.assertEquals(DATASOURCE, report.getId());
-        Assert.assertTrue(report.getPayload() instanceof JDBCSupervisorReport.JDBCSupervisorReportPayload);
-
-        JDBCSupervisorReport.JDBCSupervisorReportPayload payload = (JDBCSupervisorReport.JDBCSupervisorReportPayload)
-                report.getPayload();
-
-        Assert.assertEquals(DATASOURCE, payload.getDataSource());
-        Assert.assertEquals(3600L, (long) payload.getDurationSeconds());
-        Assert.assertEquals(1, (int) payload.getReplicas());
-        Assert.assertEquals(table, payload.getTable());
-        Assert.assertEquals(1, payload.getActiveTasks().size());
-        Assert.assertEquals(1, payload.getPublishingTasks().size());
-
-        TaskReportData activeReport = payload.getActiveTasks().get(0);
-        TaskReportData publishingReport = payload.getPublishingTasks().get(0);
-
-        Assert.assertEquals("id2", activeReport.getId());
-        Assert.assertEquals(startTime, activeReport.getStartTime());
-        Assert.assertEquals(activeReport.getOffsets().values().toArray()[0], 10);
-//        Assert.assertEquals(activeReport.getLag().values().toArray()[0], 10);
-
-        Assert.assertEquals("id1", publishingReport.getId());
-        Assert.assertEquals(publishingReport.getOffsets().values().toArray()[0], 10);
-        Assert.assertEquals(null, publishingReport.getLag());
-
-        Assert.assertEquals(payload.getLatestOffsets().values().toArray()[0], 10);
-        Assert.assertEquals(payload.getMinimumLag().values().toArray()[0], 10);
-        Assert.assertEquals(10L, (long) payload.getAggregateLag());
-        Assert.assertTrue(payload.getOffsetsLastUpdated().plusMinutes(1).isAfterNow());
-    }
-
-    @Test
-    public void testKillUnresponsiveTasksWhileGettingStartTime() throws Exception {
-        supervisor = getSupervisor(2, 1, "PT1H", null);
-
-        Capture<Task> captured = Capture.newInstance(CaptureType.ALL);
-        expect(taskMaster.getTaskQueue()).andReturn(Optional.of(taskQueue)).anyTimes();
-        expect(taskMaster.getTaskRunner()).andReturn(Optional.of(taskRunner)).anyTimes();
-        expect(taskRunner.getRunningTasks()).andReturn(Collections.EMPTY_LIST).anyTimes();
-        expect(taskStorage.getActiveTasks()).andReturn(ImmutableList.<Task>of()).anyTimes();
-        expect(indexerMetadataStorageCoordinator.getDataSourceMetadata(DATASOURCE)).andReturn(
-                new JDBCDataSourceMetadata(
-                        null
-                )
-        ).anyTimes();
-        expect(taskQueue.add(capture(captured))).andReturn(true).times(2);
-        taskRunner.registerListener(anyObject(TaskRunnerListener.class), anyObject(Executor.class));
-        replayAll();
-
-        supervisor.start();
-        supervisor.runInternal();
-        verifyAll();
-
-        List<Task> tasks = captured.getValues();
-
-        reset(taskStorage, taskClient, taskQueue);
-        expect(taskStorage.getActiveTasks()).andReturn(tasks).anyTimes();
-        for (Task task : tasks) {
-            expect(taskStorage.getStatus(task.getId())).andReturn(Optional.of(TaskStatus.running(task.getId()))).anyTimes();
-            expect(taskStorage.getTask(task.getId())).andReturn(Optional.of(task)).anyTimes();
-            expect(taskClient.getStatusAsync(task.getId()))
-                    .andReturn(Futures.immediateFuture(JDBCIndexTask.Status.NOT_STARTED));
-            expect(taskClient.getStartTimeAsync(task.getId()))
-                    .andReturn(Futures.<DateTime>immediateFailedFuture(new RuntimeException()));
-            taskQueue.shutdown(task.getId());
-        }
-        replay(taskStorage, taskClient, taskQueue);
-
-        supervisor.runInternal();
-        verifyAll();
-    }
-
-    @Test
-    public void testKillUnresponsiveTasksWhilePausing() throws Exception {
-        final TaskLocation location = new TaskLocation("testHost", 1234, -1);
-
-        supervisor = getSupervisor(2, 1, "PT1M", null);
-
-        Capture<Task> captured = Capture.newInstance(CaptureType.ALL);
-        expect(taskMaster.getTaskQueue()).andReturn(Optional.of(taskQueue)).anyTimes();
-        expect(taskMaster.getTaskRunner()).andReturn(Optional.of(taskRunner)).anyTimes();
-        expect(taskRunner.getRunningTasks()).andReturn(Collections.EMPTY_LIST).anyTimes();
-        expect(taskStorage.getActiveTasks()).andReturn(ImmutableList.<Task>of()).anyTimes();
-        expect(indexerMetadataStorageCoordinator.getDataSourceMetadata(DATASOURCE)).andReturn(
-                new JDBCDataSourceMetadata(
-                        null
-                )
-        ).anyTimes();
-        expect(taskQueue.add(capture(captured))).andReturn(true).times(2);
-        taskRunner.registerListener(anyObject(TaskRunnerListener.class), anyObject(Executor.class));
-        replayAll();
-
-        supervisor.start();
-        supervisor.runInternal();
-        verifyAll();
-
-        List<Task> tasks = captured.getValues();
-        Collection workItems = new ArrayList<>();
-        for (Task task : tasks) {
-            workItems.add(new TestTaskRunnerWorkItem(task.getId(), null, location));
-        }
-
-        reset(taskStorage, taskRunner, taskClient, taskQueue);
-        captured = Capture.newInstance(CaptureType.ALL);
-        expect(taskStorage.getActiveTasks()).andReturn(tasks).anyTimes();
-        for (Task task : tasks) {
-            expect(taskStorage.getStatus(task.getId())).andReturn(Optional.of(TaskStatus.running(task.getId()))).anyTimes();
-            expect(taskStorage.getTask(task.getId())).andReturn(Optional.of(task)).anyTimes();
-        }
-        expect(taskRunner.getRunningTasks()).andReturn(workItems).anyTimes();
-        expect(taskClient.getStatusAsync(anyString()))
-                .andReturn(Futures.immediateFuture(JDBCIndexTask.Status.READING))
-                .anyTimes();
-        expect(taskClient.getStartTimeAsync(EasyMock.contains("sequenceName-0")))
-                .andReturn(Futures.immediateFuture(DateTime.now().minusMinutes(1)))
-                .andReturn(Futures.immediateFuture(DateTime.now()));
-        taskQueue.shutdown(EasyMock.contains("sequenceName-0"));
-        taskQueue.shutdown(EasyMock.contains("sequenceName-0"));
-        expect(taskClient.pauseAsync(EasyMock.contains("sequenceName-0")))
-                .andReturn(Futures.immediateFuture((Map<Integer, Integer>) ImmutableMap.of(0, 10)))
-                .andReturn(Futures.immediateFuture((Map<Integer, Integer>) ImmutableMap.of(0, 10)));
-        expectLastCall().times(1);
-        expect(taskQueue.add(capture(captured))).andReturn(true).times(2);
-        replay(taskStorage, taskRunner, taskClient, taskQueue);
-
-        supervisor.runInternal();
-        verifyAll();
-
-        for (Task task : captured.getValues()) {
-            JDBCIOConfig taskConfig = ((JDBCIndexTask) task).getIOConfig();
-            Assert.assertEquals(taskConfig.getPartitions().getOffsetMaps().values().toArray()[0], 10);
-        }
-    }
-
-    @Test
-    public void testKillUnresponsiveTasksWhileSettingEndOffsets() throws Exception {
-        final TaskLocation location = new TaskLocation("testHost", 1234, -1);
-
-        supervisor = getSupervisor(2, 1, "PT1M", null);
-
-        Capture<Task> captured = Capture.newInstance(CaptureType.ALL);
-        expect(taskMaster.getTaskQueue()).andReturn(Optional.of(taskQueue)).anyTimes();
-        expect(taskMaster.getTaskRunner()).andReturn(Optional.of(taskRunner)).anyTimes();
-        expect(taskRunner.getRunningTasks()).andReturn(Collections.EMPTY_LIST).anyTimes();
-        expect(taskStorage.getActiveTasks()).andReturn(ImmutableList.<Task>of()).anyTimes();
-        expect(indexerMetadataStorageCoordinator.getDataSourceMetadata(DATASOURCE)).andReturn(
-                new JDBCDataSourceMetadata(
-                        null
-                )
-        ).anyTimes();
-        expect(taskQueue.add(capture(captured))).andReturn(true).times(2);
-        taskRunner.registerListener(anyObject(TaskRunnerListener.class), anyObject(Executor.class));
-        replayAll();
-
-        supervisor.start();
-        supervisor.runInternal();
-        verifyAll();
-
-        List<Task> tasks = captured.getValues();
-        Collection workItems = new ArrayList<>();
-        for (Task task : tasks) {
-            workItems.add(new TestTaskRunnerWorkItem(task.getId(), null, location));
-        }
-
-        reset(taskStorage, taskRunner, taskClient, taskQueue);
-        captured = Capture.newInstance(CaptureType.ALL);
-        expect(taskStorage.getActiveTasks()).andReturn(tasks).anyTimes();
-        for (Task task : tasks) {
-            expect(taskStorage.getStatus(task.getId())).andReturn(Optional.of(TaskStatus.running(task.getId()))).anyTimes();
-            expect(taskStorage.getTask(task.getId())).andReturn(Optional.of(task)).anyTimes();
-        }
-        expect(taskRunner.getRunningTasks()).andReturn(workItems).anyTimes();
-        expect(taskClient.getStatusAsync(anyString()))
-                .andReturn(Futures.immediateFuture(JDBCIndexTask.Status.READING))
-                .anyTimes();
-        expect(taskClient.getStartTimeAsync(EasyMock.contains("sequenceName-0")))
-                .andReturn(Futures.immediateFuture(DateTime.now().minusMinutes(2)))
-                .andReturn(Futures.immediateFuture(DateTime.now()));
-        taskQueue.shutdown(EasyMock.contains("sequenceName-0"));
-        expectLastCall().times(2);
-        expect(taskQueue.add(capture(captured))).andReturn(true).times(2);
-        expect(taskClient.pauseAsync(EasyMock.contains("sequenceName-0")))
-                .andReturn(Futures.immediateFuture((Map<Integer, Integer>) ImmutableMap.of(0, 10)))
-                .andReturn(Futures.immediateFuture((Map<Integer, Integer>) ImmutableMap.of(0, 10)));
-        replay(taskStorage, taskRunner, taskClient, taskQueue);
-        supervisor.runInternal();
-        verifyAll();
-
-        for (Task task : captured.getValues()) {
-            JDBCIOConfig taskConfig = ((JDBCIndexTask) task).getIOConfig();
-            Assert.assertEquals(taskConfig.getPartitions().getOffsetMaps().values().toArray()[0], 10);
-        }
-    }
-
-    @Test(expected = IllegalStateException.class)
-    public void testStopNotStarted() throws Exception {
-        supervisor = getSupervisor(1, 1, "PT1H", null);
-        supervisor.stop(false);
-    }
-
-    @Test
-    public void testStop() throws Exception {
-        expect(taskMaster.getTaskRunner()).andReturn(Optional.of(taskRunner)).anyTimes();
-        taskClient.close();
-        taskRunner.unregisterListener(String.format("JDBCSupervisor-%s", DATASOURCE));
-        replayAll();
-
-        supervisor = getSupervisor(1, 1, "PT1H", null);
-        supervisor.start();
-        supervisor.stop(false);
-
-        verifyAll();
-    }
-
-    @Test
-    public void testStopGracefully() throws Exception {
-        final TaskLocation location1 = new TaskLocation("testHost", 1234, -1);
-        final TaskLocation location2 = new TaskLocation("testHost2", 145, -1);
-        final DateTime startTime = new DateTime();
-
-        supervisor = getSupervisor(2, 1, "PT1H", null);
-
-        Task id1 = createJDBCIndexTask(
-                "id1",
-                DATASOURCE,
-                "sequenceName-0",
-                new JDBCOffsets(table, offsets, interval),
-                null
-        );
-
-        Task id2 = createJDBCIndexTask(
-                "id2",
-                DATASOURCE,
-                "sequenceName-0",
-                new JDBCOffsets(table, offsets, interval),
-                null
-        );
-
-        Task id3 = createJDBCIndexTask(
-                "id3",
-                DATASOURCE,
-                "sequenceName-0",
-                new JDBCOffsets(table, offsets, interval),
-                null
-        );
-
-        Collection workItems = new ArrayList<>();
-        workItems.add(new TestTaskRunnerWorkItem(id1.getId(), null, location1));
-        workItems.add(new TestTaskRunnerWorkItem(id2.getId(), null, location2));
-
-        expect(taskMaster.getTaskQueue()).andReturn(Optional.of(taskQueue)).anyTimes();
-        expect(taskMaster.getTaskRunner()).andReturn(Optional.of(taskRunner)).anyTimes();
-        expect(taskRunner.getRunningTasks()).andReturn(workItems).anyTimes();
-        expect(taskStorage.getActiveTasks()).andReturn(ImmutableList.of(id1, id2, id3)).anyTimes();
-        expect(taskStorage.getStatus("id1")).andReturn(Optional.of(TaskStatus.running("id1"))).anyTimes();
-        expect(taskStorage.getStatus("id2")).andReturn(Optional.of(TaskStatus.running("id2"))).anyTimes();
-        expect(taskStorage.getStatus("id3")).andReturn(Optional.of(TaskStatus.running("id3"))).anyTimes();
-        expect(taskStorage.getTask("id1")).andReturn(Optional.of(id1)).anyTimes();
-        expect(taskStorage.getTask("id2")).andReturn(Optional.of(id2)).anyTimes();
-        expect(taskStorage.getTask("id3")).andReturn(Optional.of(id3)).anyTimes();
-        expect(indexerMetadataStorageCoordinator.getDataSourceMetadata(DATASOURCE)).andReturn(
-                new JDBCDataSourceMetadata(
-                        new JDBCOffsets(table, offsets, interval)
-                )
-        ).anyTimes();
-        expect(taskClient.getStatusAsync("id1")).andReturn(Futures.immediateFuture(JDBCIndexTask.Status.PUBLISHING));
-        expect(taskClient.getStatusAsync("id2")).andReturn(Futures.immediateFuture(JDBCIndexTask.Status.READING));
-        expect(taskClient.getStatusAsync("id3")).andReturn(Futures.immediateFuture(JDBCIndexTask.Status.READING));
-        expect(taskClient.getStartTimeAsync("id2")).andReturn(Futures.immediateFuture(startTime));
-        expect(taskClient.getStartTimeAsync("id3")).andReturn(Futures.immediateFuture(startTime));
-        expect(taskClient.getCurrentOffsets("id1", true)).andReturn(new HashMap<>(0, 10));
-
-        taskRunner.registerListener(anyObject(TaskRunnerListener.class), anyObject(Executor.class));
-        replayAll();
-
-        supervisor.start();
-        supervisor.runInternal();
-        verifyAll();
-
-        reset(taskRunner, taskClient, taskQueue);
-        expect(taskRunner.getRunningTasks()).andReturn(workItems).anyTimes();
-        expect(taskClient.pauseAsync("id2"))
-                .andReturn(Futures.immediateFuture(new HashMap<>(0, 10)));
-        expect(
-                taskClient.setEndOffsetsAsync(
-                        EasyMock.contains("id2"),
-                        EasyMock.eq(new HashMap<>()),
-                        EasyMock.eq(true)
-                )
-        ).andReturn(Futures.immediateFuture(false));
-        taskQueue.shutdown("id2");
-        taskQueue.shutdown("id3");
-        expectLastCall().times(2);
-
-        replay(taskRunner, taskClient, taskQueue);
-
-        supervisor.gracefulShutdownInternal();
-        verifyAll();
-    }
-
-    @Test
-    public void testResetNoTasks() throws Exception {
-        expect(taskMaster.getTaskQueue()).andReturn(Optional.of(taskQueue)).anyTimes();
-        expect(taskMaster.getTaskRunner()).andReturn(Optional.of(taskRunner)).anyTimes();
-        expect(taskRunner.getRunningTasks()).andReturn(Collections.EMPTY_LIST).anyTimes();
-        expect(taskStorage.getActiveTasks()).andReturn(ImmutableList.<Task>of()).anyTimes();
-        expect(taskQueue.add(anyObject(Task.class))).andReturn(true);
-        taskRunner.registerListener(anyObject(TaskRunnerListener.class), anyObject(Executor.class));
-        replayAll();
-
-        supervisor = getSupervisor(1, 1, "PT1H", null);
-        supervisor.start();
-        supervisor.runInternal();
-        verifyAll();
-
-        reset(indexerMetadataStorageCoordinator);
-        expect(indexerMetadataStorageCoordinator.deleteDataSourceMetadata(DATASOURCE)).andReturn(true);
-        replay(indexerMetadataStorageCoordinator);
-
-        supervisor.resetInternal(null);
-        verifyAll();
-
-    }
-
-    @Test
-    public void testResetDataSourceMetadata() throws Exception {
-        supervisor = getSupervisor(1, 1, "PT1H", null);
-        expect(taskMaster.getTaskQueue()).andReturn(Optional.of(taskQueue)).anyTimes();
-        expect(taskMaster.getTaskRunner()).andReturn(Optional.of(taskRunner)).anyTimes();
-        expect(taskRunner.getRunningTasks()).andReturn(Collections.EMPTY_LIST).anyTimes();
-        expect(taskStorage.getActiveTasks()).andReturn(ImmutableList.<Task>of()).anyTimes();
-        expect(taskQueue.add(anyObject(Task.class))).andReturn(true);
-        taskRunner.registerListener(anyObject(TaskRunnerListener.class), anyObject(Executor.class));
-        replayAll();
-
-        supervisor.start();
-        supervisor.runInternal();
-        verifyAll();
-
-        Capture<String> captureDataSource = EasyMock.newCapture();
-        Capture<DataSourceMetadata> captureDataSourceMetadata = EasyMock.newCapture();
-
-        JDBCDataSourceMetadata JDBCDataSourceMetadata = new JDBCDataSourceMetadata(new JDBCOffsets(
-                table,
-                ImmutableMap.of(0, 10),
-                10
-        ));
-
-        JDBCDataSourceMetadata resetMetadata = new JDBCDataSourceMetadata(new JDBCOffsets(
-                table,
-                ImmutableMap.of(1, 11),
-                10
-        ));
-
-        JDBCDataSourceMetadata expectedMetadata = new JDBCDataSourceMetadata(new JDBCOffsets(
-                table,
-                ImmutableMap.of(1, 11),
-                10
-        ));
-
-        reset(indexerMetadataStorageCoordinator);
-        expect(indexerMetadataStorageCoordinator.getDataSourceMetadata(DATASOURCE)).andReturn(JDBCDataSourceMetadata);
-        expect(indexerMetadataStorageCoordinator.resetDataSourceMetadata(
-                EasyMock.capture(captureDataSource),
-                EasyMock.capture(captureDataSourceMetadata)
-        )).andReturn(true);
-        replay(indexerMetadataStorageCoordinator);
-
-        supervisor.resetInternal(resetMetadata);
-        verifyAll();
-
-        Assert.assertEquals(captureDataSource.getValue(), DATASOURCE);
-        Assert.assertEquals(captureDataSourceMetadata.getValue(), expectedMetadata);
-    }
-
-    @Test
-    public void testResetNoDataSourceMetadata() throws Exception {
-        supervisor = getSupervisor(1, 1, "PT1H", null);
-        expect(taskMaster.getTaskQueue()).andReturn(Optional.of(taskQueue)).anyTimes();
-        expect(taskMaster.getTaskRunner()).andReturn(Optional.of(taskRunner)).anyTimes();
-        expect(taskRunner.getRunningTasks()).andReturn(Collections.EMPTY_LIST).anyTimes();
-        expect(taskStorage.getActiveTasks()).andReturn(ImmutableList.<Task>of()).anyTimes();
-        taskRunner.registerListener(anyObject(TaskRunnerListener.class), anyObject(Executor.class));
-        expect(taskQueue.add(anyObject(Task.class))).andReturn(true);
-        replayAll();
-
-        supervisor.start();
-        supervisor.runInternal();
-        verifyAll();
-
-        JDBCDataSourceMetadata resetMetadata = new JDBCDataSourceMetadata(new JDBCOffsets(
-                table,
-                ImmutableMap.of(0, 10),
-                10
-        ));
-
-        reset(indexerMetadataStorageCoordinator);
-        // no DataSourceMetadata in metadata store
-        expect(indexerMetadataStorageCoordinator.getDataSourceMetadata(DATASOURCE)).andReturn(null);
-        replay(indexerMetadataStorageCoordinator);
-
-        supervisor.resetInternal(resetMetadata);
-        verifyAll();
-    }
-
-    @Test
-    public void testResetRunningTasks() throws Exception {
-        final TaskLocation location1 = new TaskLocation("testHost", 1234, -1);
-        final TaskLocation location2 = new TaskLocation("testHost2", 145, -1);
-        final DateTime startTime = new DateTime();
-
-        supervisor = getSupervisor(2, 1, "PT1H", null);
-
-        Task id1 = createJDBCIndexTask(
-                "id1",
-                DATASOURCE,
-                "sequenceName-0",
-                new JDBCOffsets(table, offsets, interval),
-                null
-        );
-
-        Task id2 = createJDBCIndexTask(
-                "id2",
-                DATASOURCE,
-                "sequenceName-0",
-                new JDBCOffsets(table, offsets, interval),
-                null
-        );
-
-        Task id3 = createJDBCIndexTask(
-                "id3",
-                DATASOURCE,
-                "sequenceName-0",
-                new JDBCOffsets(table, offsets, interval),
-                null
-        );
-
-        Collection workItems = new ArrayList<>();
-        workItems.add(new TestTaskRunnerWorkItem(id1.getId(), null, location1));
-        workItems.add(new TestTaskRunnerWorkItem(id2.getId(), null, location2));
-
-        expect(taskMaster.getTaskQueue()).andReturn(Optional.of(taskQueue)).anyTimes();
-        expect(taskMaster.getTaskRunner()).andReturn(Optional.of(taskRunner)).anyTimes();
-        expect(taskRunner.getRunningTasks()).andReturn(workItems).anyTimes();
-        expect(taskStorage.getActiveTasks()).andReturn(ImmutableList.of(id1, id2, id3)).anyTimes();
-        expect(taskStorage.getStatus("id1")).andReturn(Optional.of(TaskStatus.running("id1"))).anyTimes();
-        expect(taskStorage.getStatus("id2")).andReturn(Optional.of(TaskStatus.running("id2"))).anyTimes();
-        expect(taskStorage.getStatus("id3")).andReturn(Optional.of(TaskStatus.running("id3"))).anyTimes();
-        expect(taskStorage.getTask("id1")).andReturn(Optional.of(id1)).anyTimes();
-        expect(taskStorage.getTask("id2")).andReturn(Optional.of(id2)).anyTimes();
-        expect(taskStorage.getTask("id3")).andReturn(Optional.of(id3)).anyTimes();
-        expect(indexerMetadataStorageCoordinator.getDataSourceMetadata(DATASOURCE)).andReturn(
-                new JDBCDataSourceMetadata(
-                        new JDBCOffsets(table, offsets, interval)
-                )
-        ).anyTimes();
-        expect(taskClient.getStatusAsync("id1")).andReturn(Futures.immediateFuture(JDBCIndexTask.Status.PUBLISHING));
-        expect(taskClient.getStatusAsync("id2")).andReturn(Futures.immediateFuture(JDBCIndexTask.Status.READING));
-        expect(taskClient.getStatusAsync("id3")).andReturn(Futures.immediateFuture(JDBCIndexTask.Status.READING));
-        expect(taskClient.getStartTimeAsync("id2")).andReturn(Futures.immediateFuture(startTime));
-        expect(taskClient.getStartTimeAsync("id3")).andReturn(Futures.immediateFuture(startTime));
-        expect(taskClient.getCurrentOffsets("id1", true)).andReturn(new HashMap<>(0, 10));
-
-        taskRunner.registerListener(anyObject(TaskRunnerListener.class), anyObject(Executor.class));
-        replayAll();
-
-        supervisor.start();
-        supervisor.runInternal();
-        verifyAll();
-
-        reset(taskQueue, indexerMetadataStorageCoordinator);
-        expect(indexerMetadataStorageCoordinator.deleteDataSourceMetadata(DATASOURCE)).andReturn(true);
-        taskQueue.shutdown("id2");
-        taskQueue.shutdown("id3");
-        replay(taskQueue, indexerMetadataStorageCoordinator);
-
-        supervisor.resetInternal(null);
-        verifyAll();
-    }
-
-
-    private JDBCSupervisor getSupervisor(
-            int replicas,
-            int taskCount,
-            String duration,
-            Period lateMessageRejectionPeriod
-    ) {
-
-        offsets.put(0, 10);
-        JDBCSupervisorIOConfig jdbcSupervisorIOConfig = new JDBCSupervisorIOConfig(
-                table,
-                "druid",
-                "druid",
-                "jdbc:mysql://emn-g03-02:3306/druid",
-                "com.mysql.jdbc.Driver",
-                replicas,
-                taskCount,
-                new Period(duration),
-                new Period("P1D"),
-                new Period("PT30S"),
-                new JDBCOffsets(table, offsets, interval),
-                new Period("PT30M"),
-                lateMessageRejectionPeriod,
-                null,
-                Lists.newArrayList(
-                        "id",
-                        "audit_key",
-                        "type",
-                        "author",
-                        "comment",
-                        "created_date",
-                        "payload"
-                )
-        );
-
-        JDBCIndexTaskClientFactory taskClientFactory = new JDBCIndexTaskClientFactory(null, null) {
-            @Override
-            public JDBCIndexTaskClient build(
-                    TaskInfoProvider taskInfoProvider,
-                    String dataSource,
-                    int numThreads,
-                    Duration httpTimeout,
-                    long numRetries
-            ) {
-                Assert.assertEquals(TEST_CHAT_THREADS, numThreads);
-                Assert.assertEquals(TEST_HTTP_TIMEOUT.toStandardDuration(), httpTimeout);
-                Assert.assertEquals(TEST_CHAT_RETRIES, numRetries);
-                return taskClient;
-            }
-        };
-
-        return new TestableJDBCSupervisor(
-                taskStorage,
-                taskMaster,
-                indexerMetadataStorageCoordinator,
-                taskClientFactory,
-                objectMapper,
-                new JDBCSupervisorSpec(
-                        dataSchema,
-                        tuningConfig,
-                        jdbcSupervisorIOConfig,
+  }
+
+  @Test(expected = IllegalStateException.class)
+  public void testStopNotStarted() throws Exception {
+    supervisor = getSupervisor(1, 1, "PT1H", null);
+    supervisor.stop(false);
+  }
+
+  @Test
+  public void testStop() throws Exception {
+    expect(taskMaster.getTaskRunner()).andReturn(Optional.of(taskRunner)).anyTimes();
+    taskClient.close();
+    taskRunner.unregisterListener(String.format("JDBCSupervisor-%s", DATASOURCE));
+    replayAll();
+
+    supervisor = getSupervisor(1, 1, "PT1H", null);
+    supervisor.start();
+    supervisor.stop(false);
+
+    verifyAll();
+  }
+
+  @Test
+  public void testStopGracefully() throws Exception {
+    final TaskLocation location1 = new TaskLocation("testHost", 1234, -1);
+    final TaskLocation location2 = new TaskLocation("testHost2", 145, -1);
+    final DateTime startTime = new DateTime();
+
+    supervisor = getSupervisor(2, 1, "PT1H", null);
+
+    Task id1 = createJDBCIndexTask(
+        "id1",
+        DATASOURCE,
+        "sequenceName-0",
+        new JDBCOffsets(table, offsets),
+        null
+    );
+
+    Task id2 = createJDBCIndexTask(
+        "id2",
+        DATASOURCE,
+        "sequenceName-0",
+        new JDBCOffsets(table, offsets),
+        null
+    );
+
+    Task id3 = createJDBCIndexTask(
+        "id3",
+        DATASOURCE,
+        "sequenceName-0",
+        new JDBCOffsets(table, offsets),
+        null
+    );
+
+    Collection workItems = new ArrayList<>();
+    workItems.add(new TestTaskRunnerWorkItem(id1.getId(), null, location1));
+    workItems.add(new TestTaskRunnerWorkItem(id2.getId(), null, location2));
+
+    expect(taskMaster.getTaskQueue()).andReturn(Optional.of(taskQueue)).anyTimes();
+    expect(taskMaster.getTaskRunner()).andReturn(Optional.of(taskRunner)).anyTimes();
+    expect(taskRunner.getRunningTasks()).andReturn(workItems).anyTimes();
+    expect(taskStorage.getActiveTasks()).andReturn(ImmutableList.of(id1, id2, id3)).anyTimes();
+    expect(taskStorage.getStatus("id1")).andReturn(Optional.of(TaskStatus.running("id1"))).anyTimes();
+    expect(taskStorage.getStatus("id2")).andReturn(Optional.of(TaskStatus.running("id2"))).anyTimes();
+    expect(taskStorage.getStatus("id3")).andReturn(Optional.of(TaskStatus.running("id3"))).anyTimes();
+    expect(taskStorage.getTask("id1")).andReturn(Optional.of(id1)).anyTimes();
+    expect(taskStorage.getTask("id2")).andReturn(Optional.of(id2)).anyTimes();
+    expect(taskStorage.getTask("id3")).andReturn(Optional.of(id3)).anyTimes();
+    expect(indexerMetadataStorageCoordinator.resetDataSourceMetadata(DATASOURCE, new JDBCDataSourceMetadata(
+        new JDBCOffsets(table, offsets)
+    ))).andReturn(true).anyTimes();
+    expect(indexerMetadataStorageCoordinator.getDataSourceMetadata(DATASOURCE)).andReturn(
+        new JDBCDataSourceMetadata(
+            new JDBCOffsets(table, offsets)
+        )
+    ).anyTimes();
+    expect(taskClient.getStatusAsync("id1")).andReturn(Futures.immediateFuture(JDBCIndexTask.Status.PUBLISHING));
+    expect(taskClient.getStatusAsync("id2")).andReturn(Futures.immediateFuture(JDBCIndexTask.Status.READING));
+    expect(taskClient.getStatusAsync("id3")).andReturn(Futures.immediateFuture(JDBCIndexTask.Status.READING));
+    expect(taskClient.getStartTimeAsync("id2")).andReturn(Futures.immediateFuture(startTime));
+    expect(taskClient.getStartTimeAsync("id3")).andReturn(Futures.immediateFuture(startTime));
+    expect(taskClient.getCurrentOffsets("id1", true)).andReturn(new HashMap<>(0, 10));
+
+    taskRunner.registerListener(anyObject(TaskRunnerListener.class), anyObject(Executor.class));
+    replayAll();
+
+    supervisor.start();
+    supervisor.runInternal();
+    verifyAll();
+
+    reset(taskRunner, taskClient, taskQueue);
+    expect(taskRunner.getRunningTasks()).andReturn(workItems).anyTimes();
+    expect(taskClient.pauseAsync("id2"))
+        .andReturn(Futures.immediateFuture(new HashMap<>(0, 10)));
+    expect(
+        taskClient.setEndOffsetsAsync(
+            EasyMock.contains("id2"),
+            EasyMock.eq(new HashMap<>()),
+            EasyMock.eq(true)
+        )
+    ).andReturn(Futures.immediateFuture(false));
+    taskQueue.shutdown("id2");
+    taskQueue.shutdown("id3");
+    expectLastCall().times(2);
+
+    replay(taskRunner, taskClient, taskQueue);
+
+    supervisor.gracefulShutdownInternal();
+    verifyAll();
+  }
+
+  @Test
+  public void testResetNoTasks() throws Exception {
+    expect(taskMaster.getTaskQueue()).andReturn(Optional.of(taskQueue)).anyTimes();
+    expect(taskMaster.getTaskRunner()).andReturn(Optional.of(taskRunner)).anyTimes();
+    expect(taskRunner.getRunningTasks()).andReturn(Collections.EMPTY_LIST).anyTimes();
+    expect(taskStorage.getActiveTasks()).andReturn(ImmutableList.<Task>of()).anyTimes();
+    expect(taskQueue.add(anyObject(Task.class))).andReturn(true);
+    expect(indexerMetadataStorageCoordinator.resetDataSourceMetadata(DATASOURCE, new JDBCDataSourceMetadata(
+        new JDBCOffsets(table, offsets)
+    ))).andReturn(true).anyTimes();
+    expect(indexerMetadataStorageCoordinator.getDataSourceMetadata(DATASOURCE)).andReturn(
+        new JDBCDataSourceMetadata(
+            new JDBCOffsets(table, offsets)
+        )
+    ).anyTimes();
+    taskRunner.registerListener(anyObject(TaskRunnerListener.class), anyObject(Executor.class));
+    replayAll();
+
+    supervisor = getSupervisor(1, 1, "PT1H", null);
+    supervisor.start();
+    supervisor.runInternal();
+    verifyAll();
+
+    reset(indexerMetadataStorageCoordinator);
+    expect(indexerMetadataStorageCoordinator.deleteDataSourceMetadata(DATASOURCE)).andReturn(true);
+    replay(indexerMetadataStorageCoordinator);
+
+    supervisor.resetInternal(null);
+    verifyAll();
+
+  }
+
+  @Test
+  public void testResetDataSourceMetadata() throws Exception {
+    supervisor = getSupervisor(1, 1, "PT1H", null);
+    expect(taskMaster.getTaskQueue()).andReturn(Optional.of(taskQueue)).anyTimes();
+    expect(taskMaster.getTaskRunner()).andReturn(Optional.of(taskRunner)).anyTimes();
+    expect(taskRunner.getRunningTasks()).andReturn(Collections.EMPTY_LIST).anyTimes();
+    expect(taskStorage.getActiveTasks()).andReturn(ImmutableList.<Task>of()).anyTimes();
+    expect(indexerMetadataStorageCoordinator.resetDataSourceMetadata(DATASOURCE, new JDBCDataSourceMetadata(
+        new JDBCOffsets(table, offsets)
+    ))).andReturn(true).anyTimes();
+    expect(indexerMetadataStorageCoordinator.getDataSourceMetadata(DATASOURCE)).andReturn(
+        new JDBCDataSourceMetadata(
+            new JDBCOffsets(table, offsets)
+        )
+    ).anyTimes();
+    expect(taskQueue.add(anyObject(Task.class))).andReturn(true);
+    taskRunner.registerListener(anyObject(TaskRunnerListener.class), anyObject(Executor.class));
+    replayAll();
+
+    supervisor.start();
+    supervisor.runInternal();
+    verifyAll();
+
+    Capture<String> captureDataSource = EasyMock.newCapture();
+    Capture<DataSourceMetadata> captureDataSourceMetadata = EasyMock.newCapture();
+
+    JDBCDataSourceMetadata JDBCDataSourceMetadata = new JDBCDataSourceMetadata(new JDBCOffsets(
+        table,
+        ImmutableMap.of(0, 10)
+    ));
+
+    JDBCDataSourceMetadata resetMetadata = new JDBCDataSourceMetadata(new JDBCOffsets(
+        table,
+        ImmutableMap.of(1, 11)
+    ));
+
+    JDBCDataSourceMetadata expectedMetadata = new JDBCDataSourceMetadata(new JDBCOffsets(
+        table,
+        ImmutableMap.of(1, 11)
+    ));
+
+    reset(indexerMetadataStorageCoordinator);
+    expect(indexerMetadataStorageCoordinator.getDataSourceMetadata(DATASOURCE)).andReturn(JDBCDataSourceMetadata);
+    expect(indexerMetadataStorageCoordinator.resetDataSourceMetadata(
+        EasyMock.capture(captureDataSource),
+        EasyMock.capture(captureDataSourceMetadata)
+    )).andReturn(true);
+    replay(indexerMetadataStorageCoordinator);
+
+    supervisor.resetInternal(resetMetadata);
+    verifyAll();
+
+    Assert.assertEquals(captureDataSource.getValue(), DATASOURCE);
+    Assert.assertEquals(captureDataSourceMetadata.getValue(), expectedMetadata);
+  }
+
+  @Test
+  public void testResetNoDataSourceMetadata() throws Exception {
+    supervisor = getSupervisor(1, 1, "PT1H", null);
+    expect(taskMaster.getTaskQueue()).andReturn(Optional.of(taskQueue)).anyTimes();
+    expect(taskMaster.getTaskRunner()).andReturn(Optional.of(taskRunner)).anyTimes();
+    expect(taskRunner.getRunningTasks()).andReturn(Collections.EMPTY_LIST).anyTimes();
+    expect(taskStorage.getActiveTasks()).andReturn(ImmutableList.<Task>of()).anyTimes();
+    expect(indexerMetadataStorageCoordinator.resetDataSourceMetadata(DATASOURCE, new JDBCDataSourceMetadata(
+        new JDBCOffsets(table, offsets)
+    ))).andReturn(true).anyTimes();
+    expect(indexerMetadataStorageCoordinator.getDataSourceMetadata(DATASOURCE)).andReturn(
+        new JDBCDataSourceMetadata(
+            new JDBCOffsets(table, offsets)
+        )
+    ).anyTimes();
+    taskRunner.registerListener(anyObject(TaskRunnerListener.class), anyObject(Executor.class));
+    expect(taskQueue.add(anyObject(Task.class))).andReturn(true);
+    replayAll();
+
+    supervisor.start();
+    supervisor.runInternal();
+    verifyAll();
+
+    JDBCDataSourceMetadata resetMetadata = new JDBCDataSourceMetadata(new JDBCOffsets(
+        table,
+        ImmutableMap.of(0, 10)
+    ));
+
+    reset(indexerMetadataStorageCoordinator);
+    // no DataSourceMetadata in metadata store
+    expect(indexerMetadataStorageCoordinator.getDataSourceMetadata(DATASOURCE)).andReturn(null);
+    replay(indexerMetadataStorageCoordinator);
+
+    supervisor.resetInternal(resetMetadata);
+    verifyAll();
+  }
+
+  @Test
+  public void testResetRunningTasks() throws Exception {
+    final TaskLocation location1 = new TaskLocation("testHost", 1234, -1);
+    final TaskLocation location2 = new TaskLocation("testHost2", 145, -1);
+    final DateTime startTime = new DateTime();
+
+    supervisor = getSupervisor(2, 1, "PT1H", null);
+
+    Task id1 = createJDBCIndexTask(
+        "id1",
+        DATASOURCE,
+        "sequenceName-0",
+        new JDBCOffsets(table, offsets),
+        null
+    );
+
+    Task id2 = createJDBCIndexTask(
+        "id2",
+        DATASOURCE,
+        "sequenceName-0",
+        new JDBCOffsets(table, offsets),
+        null
+    );
+
+    Task id3 = createJDBCIndexTask(
+        "id3",
+        DATASOURCE,
+        "sequenceName-0",
+        new JDBCOffsets(table, offsets),
+        null
+    );
+
+    Collection workItems = new ArrayList<>();
+    workItems.add(new TestTaskRunnerWorkItem(id1.getId(), null, location1));
+    workItems.add(new TestTaskRunnerWorkItem(id2.getId(), null, location2));
+
+    expect(taskMaster.getTaskQueue()).andReturn(Optional.of(taskQueue)).anyTimes();
+    expect(taskMaster.getTaskRunner()).andReturn(Optional.of(taskRunner)).anyTimes();
+    expect(taskRunner.getRunningTasks()).andReturn(workItems).anyTimes();
+    expect(taskStorage.getActiveTasks()).andReturn(ImmutableList.of(id1, id2, id3)).anyTimes();
+    expect(taskStorage.getStatus("id1")).andReturn(Optional.of(TaskStatus.running("id1"))).anyTimes();
+    expect(taskStorage.getStatus("id2")).andReturn(Optional.of(TaskStatus.running("id2"))).anyTimes();
+    expect(taskStorage.getStatus("id3")).andReturn(Optional.of(TaskStatus.running("id3"))).anyTimes();
+    expect(taskStorage.getTask("id1")).andReturn(Optional.of(id1)).anyTimes();
+    expect(taskStorage.getTask("id2")).andReturn(Optional.of(id2)).anyTimes();
+    expect(taskStorage.getTask("id3")).andReturn(Optional.of(id3)).anyTimes();
+    expect(indexerMetadataStorageCoordinator.getDataSourceMetadata(DATASOURCE)).andReturn(
+        new JDBCDataSourceMetadata(
+            new JDBCOffsets(table, offsets)
+        )
+    ).anyTimes();
+    expect(taskClient.getStatusAsync("id1")).andReturn(Futures.immediateFuture(JDBCIndexTask.Status.PUBLISHING));
+    expect(taskClient.getStatusAsync("id2")).andReturn(Futures.immediateFuture(JDBCIndexTask.Status.READING));
+    expect(taskClient.getStatusAsync("id3")).andReturn(Futures.immediateFuture(JDBCIndexTask.Status.READING));
+    expect(taskClient.getStartTimeAsync("id2")).andReturn(Futures.immediateFuture(startTime));
+    expect(taskClient.getStartTimeAsync("id3")).andReturn(Futures.immediateFuture(startTime));
+    expect(taskClient.getCurrentOffsets("id1", true)).andReturn(new HashMap<>(0, 10));
+
+    taskRunner.registerListener(anyObject(TaskRunnerListener.class), anyObject(Executor.class));
+    replayAll();
+
+    supervisor.start();
+    supervisor.runInternal();
+    verifyAll();
+
+    reset(taskQueue, indexerMetadataStorageCoordinator);
+    expect(indexerMetadataStorageCoordinator.deleteDataSourceMetadata(DATASOURCE)).andReturn(true);
+    taskQueue.shutdown("id2");
+    taskQueue.shutdown("id3");
+    replay(taskQueue, indexerMetadataStorageCoordinator);
+
+    supervisor.resetInternal(null);
+    verifyAll();
+  }
+
+
+  private JDBCSupervisor getSupervisor(
+      int replicas,
+      int taskCount,
+      String duration,
+      Period lateMessageRejectionPeriod
+  ) {
+
+    offsets.put(0, 10);
+    JDBCSupervisorIOConfig jdbcSupervisorIOConfig = new JDBCSupervisorIOConfig(
+        table,
+        "druid",
+        "druid",
+        "jdbc:mysql://emn-g03-02:3306/druid",
+        "com.mysql.jdbc.Driver",
+        replicas,
+        taskCount,
+        new Period(duration),
+        new Period("P1D"),
+        new Period("PT30S"),
+        new Period("PT30M"),
+        lateMessageRejectionPeriod,
+        new JDBCOffsets(table, offsets),
+        null,
+        Lists.newArrayList(
+            "id",
+            "audit_key",
+            "type",
+            "author",
+            "comment",
+            "created_date",
+            "payload"
+        ),
+        10
+    );
+
+    JDBCIndexTaskClientFactory taskClientFactory = new JDBCIndexTaskClientFactory(null, null) {
+      @Override
+      public JDBCIndexTaskClient build(
+          TaskInfoProvider taskInfoProvider,
+          String dataSource,
+          int numThreads,
+          Duration httpTimeout,
+          long numRetries
+      ) {
+        Assert.assertEquals(TEST_CHAT_THREADS, numThreads);
+        Assert.assertEquals(TEST_HTTP_TIMEOUT.toStandardDuration(), httpTimeout);
+        Assert.assertEquals(TEST_CHAT_RETRIES, numRetries);
+        return taskClient;
+      }
+    };
+
+    return new TestableJDBCSupervisor(
+        taskStorage,
+        taskMaster,
+        indexerMetadataStorageCoordinator,
+        taskClientFactory,
+        objectMapper,
+        new JDBCSupervisorSpec(
+            dataSchema,
+            tuningConfig,
+            jdbcSupervisorIOConfig,
+            null,
+            taskStorage,
+            taskMaster,
+            indexerMetadataStorageCoordinator,
+            taskClientFactory,
+            objectMapper,
+            new NoopServiceEmitter(),
+            new DruidMonitorSchedulerConfig()
+        )
+    );
+  }
+
+  private static DataSchema getDataSchema(String dataSource) {
+    return new DataSchema(
+        dataSource,
+        objectMapper.convertValue(
+            new StringInputRowParser(
+                new JSONParseSpec(
+                    new TimestampSpec("created_date", "auto", null),
+                    new DimensionsSpec(
+                        DimensionsSpec.getDefaultSchemas(ImmutableList.<String>of(
+                            "id",
+                            "audit_key",
+                            "type",
+                            "author",
+                            "comment",
+                            "created_date",
+                            "payload"
+                        )),
                         null,
-                        taskStorage,
-                        taskMaster,
-                        indexerMetadataStorageCoordinator,
-                        taskClientFactory,
-                        objectMapper,
-                        new NoopServiceEmitter(),
-                        new DruidMonitorSchedulerConfig()
-                )
-        );
+                        null
+                    ),
+                    new JSONPathSpec(true, ImmutableList.<JSONPathFieldSpec>of()),
+                    ImmutableMap.<String, Boolean>of()
+                ),
+                Charsets.UTF_8.name()
+            ),
+            Map.class
+        ),
+        new AggregatorFactory[]{new CountAggregatorFactory("rows")},
+        new UniformGranularitySpec(
+            Granularities.HOUR,
+            Granularities.NONE,
+            ImmutableList.<Interval>of()
+        ),
+        objectMapper
+    );
+  }
+
+  private JDBCIndexTask createJDBCIndexTask(
+      String id,
+      String dataSource,
+      String sequenceName,
+      JDBCOffsets partition,
+      DateTime minimumMessageTime
+  ) {
+
+    return new JDBCIndexTask(
+        id,
+        null,
+        getDataSchema(dataSource),
+        tuningConfig,
+        new JDBCIOConfig(
+            sequenceName,
+            table,
+            "druid",
+            "druid",
+            "jdbc:mysql://emn-g03-02:3306/druid",
+            "com.mysql.jdbc.Driver",
+            partition,
+            true,
+            false,
+            minimumMessageTime,
+            null,
+            Lists.newArrayList(
+                "id",
+                "audit_key",
+                "type",
+                "author",
+                "comment",
+                "created_date",
+                "payload"
+            ),
+            interval
+        ),
+        ImmutableMap.<String, Object>of(),
+        null
+    );
+  }
+
+  private static class TestTaskRunnerWorkItem extends TaskRunnerWorkItem {
+
+    private TaskLocation location;
+
+    public TestTaskRunnerWorkItem(String taskId, ListenableFuture<TaskStatus> result, TaskLocation location) {
+      super(taskId, result);
+      this.location = location;
     }
 
-    private static DataSchema getDataSchema(String dataSource) {
-        return new DataSchema(
-                dataSource,
-                objectMapper.convertValue(
-                        new StringInputRowParser(
-                                new JSONParseSpec(
-                                        new TimestampSpec("created_date", "auto", null),
-                                        new DimensionsSpec(
-                                                DimensionsSpec.getDefaultSchemas(ImmutableList.<String>of(
-                                                        "id",
-                                                        "audit_key",
-                                                        "type",
-                                                        "author",
-                                                        "comment",
-                                                        "created_date",
-                                                        "payload"
-                                                )),
-                                                null,
-                                                null
-                                        ),
-                                        new JSONPathSpec(true, ImmutableList.<JSONPathFieldSpec>of()),
-                                        ImmutableMap.<String, Boolean>of()
-                                ),
-                                Charsets.UTF_8.name()
-                        ),
-                        Map.class
-                ),
-                new AggregatorFactory[]{new CountAggregatorFactory("rows")},
-                new UniformGranularitySpec(
-                        Granularities.HOUR,
-                        Granularities.NONE,
-                        ImmutableList.<Interval>of()
-                ),
-                objectMapper
-        );
+    @Override
+    public TaskLocation getLocation() {
+      return location;
     }
+  }
 
-    private JDBCIndexTask createJDBCIndexTask(
-            String id,
-            String dataSource,
-            String sequenceName,
-            JDBCOffsets partition,
-            DateTime minimumMessageTime
+  private static class TestableJDBCSupervisor extends JDBCSupervisor {
+    public TestableJDBCSupervisor(
+        TaskStorage taskStorage,
+        TaskMaster taskMaster,
+        IndexerMetadataStorageCoordinator indexerMetadataStorageCoordinator,
+        JDBCIndexTaskClientFactory taskClientFactory,
+        ObjectMapper mapper,
+        JDBCSupervisorSpec spec
     ) {
-
-        offsets.put(0, 10);
-        return new JDBCIndexTask(
-                id,
-                null,
-                getDataSchema(dataSource),
-                tuningConfig,
-                new JDBCIOConfig(
-                        sequenceName,
-                        table,
-                        "druid",
-                        "druid",
-                        "jdbc:mysql://emn-g03-02:3306/druid",
-                        "com.mysql.jdbc.Driver",
-                        partition,
-                        true,
-                        false,
-                        minimumMessageTime,
-                        null,
-                        Lists.newArrayList(
-                                "id",
-                                "audit_key",
-                                "type",
-                                "author",
-                                "comment",
-                                "created_date",
-                                "payload"
-                        )
-                ),
-                ImmutableMap.<String, Object>of(),
-                null
-        );
+      super(taskStorage, taskMaster, indexerMetadataStorageCoordinator, taskClientFactory, mapper, spec);
     }
 
-    private static class TestTaskRunnerWorkItem extends TaskRunnerWorkItem {
-
-        private TaskLocation location;
-
-        public TestTaskRunnerWorkItem(String taskId, ListenableFuture<TaskStatus> result, TaskLocation location) {
-            super(taskId, result);
-            this.location = location;
-        }
-
-        @Override
-        public TaskLocation getLocation() {
-            return location;
-        }
+    @Override
+    protected String generateSequenceName(int groupId) {
+      return String.format("sequenceName-%d", groupId);
     }
-
-    private static class TestableJDBCSupervisor extends JDBCSupervisor {
-        public TestableJDBCSupervisor(
-                TaskStorage taskStorage,
-                TaskMaster taskMaster,
-                IndexerMetadataStorageCoordinator indexerMetadataStorageCoordinator,
-                JDBCIndexTaskClientFactory taskClientFactory,
-                ObjectMapper mapper,
-                JDBCSupervisorSpec spec
-        ) {
-            super(taskStorage, taskMaster, indexerMetadataStorageCoordinator, taskClientFactory, mapper, spec);
-        }
-
-        @Override
-        protected String generateSequenceName(int groupId) {
-            return String.format("sequenceName-%d", groupId);
-        }
-    }
+  }
 }

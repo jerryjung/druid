@@ -29,8 +29,7 @@ import org.joda.time.Period;
 
 import java.util.List;
 
-public class JDBCSupervisorIOConfig
-{
+public class JDBCSupervisorIOConfig {
 
   private final String table;
   private final String user;
@@ -42,11 +41,12 @@ public class JDBCSupervisorIOConfig
   private final Duration taskDuration;
   private final Duration startDelay;
   private final Duration period;
-  private final JDBCOffsets partitions;
   private final Duration completionTimeout;
   private final Optional<Duration> lateMessageRejectionPeriod;
+  private final JDBCOffsets jdbcOffsets;
   private final String query;
   private final List<String> columns;
+  private final int interval;
 
   @JsonCreator
   public JDBCSupervisorIOConfig(
@@ -60,13 +60,13 @@ public class JDBCSupervisorIOConfig
       @JsonProperty("taskDuration") Period taskDuration,
       @JsonProperty("startDelay") Period startDelay,
       @JsonProperty("period") Period period,
-      @JsonProperty("partitions") JDBCOffsets partitions,
       @JsonProperty("completionTimeout") Period completionTimeout,
       @JsonProperty("lateMessageRejectionPeriod") Period lateMessageRejectionPeriod,
+      @JsonProperty("jdbcOffsets") JDBCOffsets jdbcOffsets,
       @JsonProperty("query") String query,
-      @JsonProperty("columns") List<String> columns
-  )
-  {
+      @JsonProperty("columns") List<String> columns,
+      @JsonProperty("interval") int interval
+  ) {
     this.table = Preconditions.checkNotNull(table, "table");
     this.user = Preconditions.checkNotNull(user, "user");
     this.password = Preconditions.checkNotNull(password, "password");
@@ -79,128 +79,117 @@ public class JDBCSupervisorIOConfig
     this.period = defaultDuration(period, "PT30S");
     this.completionTimeout = defaultDuration(completionTimeout, "PT30M");
     this.lateMessageRejectionPeriod = lateMessageRejectionPeriod == null
-                                      ? Optional.<Duration>absent()
-                                      : Optional.of(lateMessageRejectionPeriod.toStandardDuration());
-    this.partitions = partitions;
+        ? Optional.<Duration>absent()
+        : Optional.of(lateMessageRejectionPeriod.toStandardDuration());
+    this.jdbcOffsets = jdbcOffsets;
     this.query = query;
     this.columns = columns;
+    this.interval = interval;
   }
 
   @JsonProperty
-  public String getQuery()
-  {
+  public String getQuery() {
     return query;
   }
 
   @JsonProperty
-  public List<String> getColumns()
-  {
+  public List<String> getColumns() {
     return columns;
   }
 
   @JsonProperty
-  public String getUser()
-  {
+  public String getUser() {
     return user;
   }
 
   @JsonProperty
-  public String getPassword()
-  {
+  public String getPassword() {
     return password;
   }
 
   @JsonProperty
-  public String getConnectURI()
-  {
+  public String getConnectURI() {
     return connectURI;
   }
 
   @JsonProperty
-  public String getDriverClass()
-  {
+  public String getDriverClass() {
     return driverClass;
   }
 
   @JsonProperty
-  public String getTable()
-  {
+  public String getTable() {
     return table;
   }
 
   @JsonProperty
-  public Integer getReplicas()
-  {
+  public Integer getReplicas() {
     return replicas;
   }
 
   @JsonProperty
-  public Integer getTaskCount()
-  {
+  public Integer getTaskCount() {
     return taskCount;
   }
 
   @JsonProperty
-  public Duration getTaskDuration()
-  {
+  public Duration getTaskDuration() {
     return taskDuration;
   }
 
   @JsonProperty
-  public Duration getStartDelay()
-  {
+  public Duration getStartDelay() {
     return startDelay;
   }
 
   @JsonProperty
-  public Duration getPeriod()
-  {
+  public Duration getPeriod() {
     return period;
   }
 
   @JsonProperty
-  public JDBCOffsets getPartitions()
-  {
-    return partitions;
-  }
-
-  @JsonProperty
-  public Duration getCompletionTimeout()
-  {
+  public Duration getCompletionTimeout() {
     return completionTimeout;
   }
 
   @JsonProperty
-  public Optional<Duration> getLateMessageRejectionPeriod()
-  {
+  public Optional<Duration> getLateMessageRejectionPeriod() {
     return lateMessageRejectionPeriod;
   }
 
-
-  @Override
-  public String toString()
-  {
-    return "JDBCSupervisorIOConfig{" +
-           "table='" + table + '\'' +
-           ", user='" + user + '\'' +
-           ", password='" + password + '\'' +
-           ", connectURI='" + connectURI + '\'' +
-           ", driverClass='" + driverClass + '\'' +
-           ", replicas=" + replicas +
-           ", taskCount=" + taskCount +
-           ", taskDuration=" + taskDuration +
-           ", startDelay=" + startDelay +
-           ", period=" + period +
-           ", partitions=" + partitions +
-           ", completionTimeout=" + completionTimeout +
-           ", lateMessageRejectionPeriod=" + lateMessageRejectionPeriod +
-           ", query='" + query + '\'' +
-           ", columns=" + columns +
-           '}';
+  @JsonProperty
+  public int getInterval() {
+    return interval;
   }
 
-  private static Duration defaultDuration(final Period period, final String theDefault)
-  {
+  @JsonProperty
+  public JDBCOffsets getJdbcOffsets() {
+    return jdbcOffsets;
+  }
+
+  @Override
+  public String toString() {
+    return "JDBCSupervisorIOConfig{" +
+        "table='" + table + '\'' +
+        ", user='" + user + '\'' +
+        ", password='" + password + '\'' +
+        ", connectURI='" + connectURI + '\'' +
+        ", driverClass='" + driverClass + '\'' +
+        ", replicas=" + replicas +
+        ", taskCount=" + taskCount +
+        ", taskDuration=" + taskDuration +
+        ", startDelay=" + startDelay +
+        ", period=" + period +
+        ", completionTimeout=" + completionTimeout +
+        ", lateMessageRejectionPeriod=" + lateMessageRejectionPeriod +
+        ", jdbcOffsets=" + jdbcOffsets +
+        ", query='" + query + '\'' +
+        ", columns=" + columns +
+        ", interval=" + interval +
+        '}';
+  }
+
+  private static Duration defaultDuration(final Period period, final String theDefault) {
     return (period == null ? new Period(theDefault) : period).toStandardDuration();
   }
 }
