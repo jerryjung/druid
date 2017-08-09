@@ -1228,7 +1228,7 @@ public class JDBCSupervisorTest extends EasyMockSupport {
         "id1",
         DATASOURCE,
         "sequenceName-0",
-        new JDBCOffsets(table, offsets),
+        new JDBCOffsets(table, ImmutableMap.of(2,11)),
         null
     );
 
@@ -1236,7 +1236,7 @@ public class JDBCSupervisorTest extends EasyMockSupport {
         "id2",
         DATASOURCE,
         "sequenceName-0",
-        new JDBCOffsets(table, offsets),
+        new JDBCOffsets(table, ImmutableMap.of(3,13)),
         null
     );
 
@@ -1244,7 +1244,7 @@ public class JDBCSupervisorTest extends EasyMockSupport {
         "id3",
         DATASOURCE,
         "sequenceName-0",
-        new JDBCOffsets(table, offsets),
+        new JDBCOffsets(table, ImmutableMap.of(4,14)),
         null
     );
 
@@ -1287,15 +1287,14 @@ public class JDBCSupervisorTest extends EasyMockSupport {
     reset(taskRunner, taskClient, taskQueue);
     expect(taskRunner.getRunningTasks()).andReturn(workItems).anyTimes();
     expect(taskClient.pauseAsync("id2"))
-        .andReturn(Futures.immediateFuture(new HashMap<>(0, 10)));
+        .andReturn(Futures.immediateFuture(ImmutableMap.of(14,24)));
     expect(
         taskClient.setEndOffsetsAsync(
             EasyMock.contains("id2"),
-            EasyMock.eq(new HashMap<>()),
+            EasyMock.eq(ImmutableMap.of(14,24)),
             EasyMock.eq(true)
         )
-    ).andReturn(Futures.immediateFuture(false));
-    taskQueue.shutdown("id2");
+    ).andReturn(Futures.immediateFuture(true));
     taskQueue.shutdown("id3");
     expectLastCall().times(2);
 
