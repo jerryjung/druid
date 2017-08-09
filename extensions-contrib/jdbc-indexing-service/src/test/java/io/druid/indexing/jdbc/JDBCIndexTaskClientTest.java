@@ -449,8 +449,8 @@ public class JDBCIndexTaskClientTest extends EasyMockSupport
     Assert.assertTrue(request.getHeaders().get("X-Druid-Task-Id").contains("test-id"));
 
     Assert.assertEquals(2, results.size());
-    Assert.assertEquals(1, (long) results.get(0));
-    Assert.assertEquals(10, (long) results.get(1));
+    Assert.assertEquals(1, (int) results.get(0));
+    Assert.assertEquals(10, (int) results.get(1));
   }
 
   @Test
@@ -714,7 +714,7 @@ public class JDBCIndexTaskClientTest extends EasyMockSupport
     for (int i = 0; i < numRequests; i++) {
       Assert.assertEquals(HttpMethod.POST, requests.get(i).getMethod());
       Assert.assertTrue("unexpectedURL", expectedUrls.contains(requests.get(i).getUrl()));
-      Assert.assertEquals(Maps.newLinkedHashMap(ImmutableMap.of(0, 1L)), responses.get(i));
+      Assert.assertEquals(Maps.newLinkedHashMap(ImmutableMap.of(0, 1)), responses.get(i));
     }
   }
 

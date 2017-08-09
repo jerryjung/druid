@@ -162,7 +162,7 @@ public class JDBCIndexTaskClient
 
       if (response.getStatus().equals(HttpResponseStatus.OK)) {
         log.info("Task [%s] paused successfully", id);
-        return jsonMapper.readValue(response.getContent(), new TypeReference<Map<Integer, Long>>()
+        return jsonMapper.readValue(response.getContent(), new TypeReference<Map<Integer, Integer>>()
         {
         });
       }
@@ -238,7 +238,7 @@ public class JDBCIndexTaskClient
 
     try {
       final FullResponseHolder response = submitRequest(id, HttpMethod.GET, "offsets/current", null, retry);
-      return jsonMapper.readValue(response.getContent(), new TypeReference<Map<Integer, Long>>()
+      return jsonMapper.readValue(response.getContent(), new TypeReference<Map<Integer, Integer>>()
       {
       });
     }

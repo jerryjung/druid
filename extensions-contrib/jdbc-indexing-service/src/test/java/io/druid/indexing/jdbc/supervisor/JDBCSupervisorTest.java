@@ -166,9 +166,9 @@ public class JDBCSupervisorTest extends EasyMockSupport {
     expect(taskMaster.getTaskQueue()).andReturn(Optional.of(taskQueue)).anyTimes();
     expect(taskMaster.getTaskRunner()).andReturn(Optional.of(taskRunner)).anyTimes();
     expect(taskStorage.getActiveTasks()).andReturn(ImmutableList.<Task>of()).anyTimes();
-    expect(indexerMetadataStorageCoordinator.resetDataSourceMetadata(DATASOURCE, new JDBCDataSourceMetadata(
-        new JDBCOffsets(table, offsets)
-    ))).andReturn(true).anyTimes();
+//    expect(indexerMetadataStorageCoordinator.deleteDataSourceMetadata(DATASOURCE)).andReturn(true);
+//    expect(indexerMetadataStorageCoordinator.resetDataSourceMetadata(DATASOURCE, new JDBCDataSourceMetadata(new JDBCOffsets(table, ImmutableMap.of(1, 11))))).andReturn(true);
+
     expect(indexerMetadataStorageCoordinator.getDataSourceMetadata(DATASOURCE)).andReturn(
         new JDBCDataSourceMetadata(
             new JDBCOffsets(table, offsets)
@@ -206,9 +206,9 @@ public class JDBCSupervisorTest extends EasyMockSupport {
     expect(taskMaster.getTaskQueue()).andReturn(Optional.of(taskQueue)).anyTimes();
     expect(taskMaster.getTaskRunner()).andReturn(Optional.of(taskRunner)).anyTimes();
     expect(taskStorage.getActiveTasks()).andReturn(ImmutableList.<Task>of()).anyTimes();
-    expect(indexerMetadataStorageCoordinator.resetDataSourceMetadata(DATASOURCE, new JDBCDataSourceMetadata(
-        new JDBCOffsets(table, ImmutableMap.of(1, 12))
-    ))).andReturn(true).anyTimes();
+//    expect(indexerMetadataStorageCoordinator.deleteDataSourceMetadata(DATASOURCE)).andReturn(true);
+//    expect(indexerMetadataStorageCoordinator.resetDataSourceMetadata(DATASOURCE, new JDBCDataSourceMetadata(new JDBCOffsets(table, ImmutableMap.of(1, 11))))).andReturn(true);
+
     expect(indexerMetadataStorageCoordinator.getDataSourceMetadata(DATASOURCE)).andReturn(
         new JDBCDataSourceMetadata(
             new JDBCOffsets(table, offsets)
@@ -246,9 +246,9 @@ public class JDBCSupervisorTest extends EasyMockSupport {
     expect(taskMaster.getTaskQueue()).andReturn(Optional.of(taskQueue)).anyTimes();
     expect(taskMaster.getTaskRunner()).andReturn(Optional.of(taskRunner)).anyTimes();
     expect(taskStorage.getActiveTasks()).andReturn(ImmutableList.<Task>of()).anyTimes();
-    expect(indexerMetadataStorageCoordinator.resetDataSourceMetadata(DATASOURCE, new JDBCDataSourceMetadata(
-        new JDBCOffsets(table, offsets)
-    ))).andReturn(true).anyTimes();
+//    expect(indexerMetadataStorageCoordinator.deleteDataSourceMetadata(DATASOURCE)).andReturn(true);
+//    expect(indexerMetadataStorageCoordinator.resetDataSourceMetadata(DATASOURCE, new JDBCDataSourceMetadata(new JDBCOffsets(table, ImmutableMap.of(1, 11))))).andReturn(true);
+
     expect(indexerMetadataStorageCoordinator.getDataSourceMetadata(DATASOURCE)).andReturn(
         new JDBCDataSourceMetadata(
             new JDBCOffsets(table, offsets)
@@ -276,9 +276,9 @@ public class JDBCSupervisorTest extends EasyMockSupport {
     expect(taskMaster.getTaskQueue()).andReturn(Optional.of(taskQueue)).anyTimes();
     expect(taskMaster.getTaskRunner()).andReturn(Optional.<TaskRunner>absent()).anyTimes();
     expect(taskStorage.getActiveTasks()).andReturn(ImmutableList.<Task>of()).anyTimes();
-    expect(indexerMetadataStorageCoordinator.resetDataSourceMetadata(DATASOURCE, new JDBCDataSourceMetadata(
-        new JDBCOffsets(table, offsets)
-    ))).andReturn(true).anyTimes();
+//    expect(indexerMetadataStorageCoordinator.deleteDataSourceMetadata(DATASOURCE)).andReturn(true);
+//    expect(indexerMetadataStorageCoordinator.resetDataSourceMetadata(DATASOURCE, new JDBCDataSourceMetadata(new JDBCOffsets(table, ImmutableMap.of(1, 11))))).andReturn(true);
+
     expect(indexerMetadataStorageCoordinator.getDataSourceMetadata(DATASOURCE)).andReturn(
         new JDBCDataSourceMetadata(
             new JDBCOffsets(table, offsets)
@@ -306,9 +306,9 @@ public class JDBCSupervisorTest extends EasyMockSupport {
     expect(taskMaster.getTaskQueue()).andReturn(Optional.of(taskQueue)).anyTimes();
     expect(taskMaster.getTaskRunner()).andReturn(Optional.<TaskRunner>absent()).anyTimes();
     expect(taskStorage.getActiveTasks()).andReturn(ImmutableList.<Task>of()).anyTimes();
-    expect(indexerMetadataStorageCoordinator.resetDataSourceMetadata(DATASOURCE, new JDBCDataSourceMetadata(
-        new JDBCOffsets(table, offsets)
-    ))).andReturn(true).anyTimes();
+//    expect(indexerMetadataStorageCoordinator.deleteDataSourceMetadata(DATASOURCE)).andReturn(true);
+//    expect(indexerMetadataStorageCoordinator.resetDataSourceMetadata(DATASOURCE, new JDBCDataSourceMetadata(new JDBCOffsets(table, ImmutableMap.of(1, 11))))).andReturn(true);
+
     expect(indexerMetadataStorageCoordinator.getDataSourceMetadata(DATASOURCE)).andReturn(
         new JDBCDataSourceMetadata(
             new JDBCOffsets(table, offsets)
@@ -349,9 +349,9 @@ public class JDBCSupervisorTest extends EasyMockSupport {
     expect(taskMaster.getTaskQueue()).andReturn(Optional.of(taskQueue)).anyTimes();
     expect(taskMaster.getTaskRunner()).andReturn(Optional.<TaskRunner>absent()).anyTimes();
     expect(taskStorage.getActiveTasks()).andReturn(ImmutableList.<Task>of()).anyTimes();
-    expect(indexerMetadataStorageCoordinator.resetDataSourceMetadata(DATASOURCE, new JDBCDataSourceMetadata(
-        new JDBCOffsets(table, offsets)
-    ))).andReturn(true).anyTimes();
+//    expect(indexerMetadataStorageCoordinator.deleteDataSourceMetadata(DATASOURCE)).andReturn(true);
+//    expect(indexerMetadataStorageCoordinator.resetDataSourceMetadata(DATASOURCE, new JDBCDataSourceMetadata(new JDBCOffsets(table, ImmutableMap.of(1, 11))))).andReturn(true);
+
     expect(indexerMetadataStorageCoordinator.getDataSourceMetadata(DATASOURCE)).andReturn(
         new JDBCDataSourceMetadata(
             new JDBCOffsets(table, offsets)
@@ -380,9 +380,9 @@ public class JDBCSupervisorTest extends EasyMockSupport {
     expect(taskMaster.getTaskQueue()).andReturn(Optional.of(taskQueue)).anyTimes();
     expect(taskMaster.getTaskRunner()).andReturn(Optional.<TaskRunner>absent()).anyTimes();
     expect(taskStorage.getActiveTasks()).andReturn(ImmutableList.<Task>of()).anyTimes();
-    expect(indexerMetadataStorageCoordinator.resetDataSourceMetadata(DATASOURCE, new JDBCDataSourceMetadata(
-        new JDBCOffsets(table, offsets)
-    ))).andReturn(true).anyTimes();
+//    expect(indexerMetadataStorageCoordinator.deleteDataSourceMetadata(DATASOURCE)).andReturn(true);
+//    expect(indexerMetadataStorageCoordinator.resetDataSourceMetadata(DATASOURCE, new JDBCDataSourceMetadata(new JDBCOffsets(table, ImmutableMap.of(1, 11))))).andReturn(true);
+
     expect(indexerMetadataStorageCoordinator.getDataSourceMetadata(DATASOURCE)).andReturn(
         new JDBCDataSourceMetadata(new JDBCOffsets(table, offsets))
     ).anyTimes();
@@ -461,6 +461,8 @@ public class JDBCSupervisorTest extends EasyMockSupport {
     expect(taskClient.getStatusAsync(anyString())).andReturn(Futures.immediateFuture(JDBCIndexTask.Status.NOT_STARTED))
         .anyTimes();
     expect(taskClient.getStartTimeAsync(anyString())).andReturn(Futures.immediateFuture(DateTime.now())).anyTimes();
+//    expect(indexerMetadataStorageCoordinator.deleteDataSourceMetadata(DATASOURCE)).andReturn(true);
+//    expect(indexerMetadataStorageCoordinator.resetDataSourceMetadata(DATASOURCE, new JDBCDataSourceMetadata(new JDBCOffsets(table, ImmutableMap.of(1, 11))))).andReturn(true);
     expect(indexerMetadataStorageCoordinator.getDataSourceMetadata(DATASOURCE)).andReturn(
         new JDBCDataSourceMetadata(
             new JDBCOffsets(table, offsets)
@@ -490,9 +492,9 @@ public class JDBCSupervisorTest extends EasyMockSupport {
     expect(taskClient.getStatusAsync(anyString())).andReturn(Futures.immediateFuture(JDBCIndexTask.Status.NOT_STARTED))
         .anyTimes();
     expect(taskClient.getStartTimeAsync(anyString())).andReturn(Futures.immediateFuture(DateTime.now())).anyTimes();
-    expect(indexerMetadataStorageCoordinator.resetDataSourceMetadata(DATASOURCE, new JDBCDataSourceMetadata(
-        new JDBCOffsets(table, offsets)
-    ))).andReturn(true).anyTimes();
+    expect(indexerMetadataStorageCoordinator.deleteDataSourceMetadata(DATASOURCE)).andReturn(true).anyTimes();
+    expect(indexerMetadataStorageCoordinator.resetDataSourceMetadata(DATASOURCE, new JDBCDataSourceMetadata(new JDBCOffsets(table, ImmutableMap.of(1, 11))))).andReturn(true).anyTimes();
+
     expect(indexerMetadataStorageCoordinator.getDataSourceMetadata(DATASOURCE)).andReturn(
         new JDBCDataSourceMetadata(
             new JDBCOffsets(table, offsets)
@@ -573,9 +575,9 @@ public class JDBCSupervisorTest extends EasyMockSupport {
     expect(taskClient.getStatusAsync("id1")).andReturn(Futures.immediateFuture(JDBCIndexTask.Status.READING));
     expect(taskClient.getStartTimeAsync("id1")).andReturn(Futures.immediateFuture(now)).anyTimes();
     expect(taskQueue.add(capture(captured))).andReturn(true);
-    expect(indexerMetadataStorageCoordinator.resetDataSourceMetadata(DATASOURCE, new JDBCDataSourceMetadata(
-        new JDBCOffsets(table, offsets)
-    ))).andReturn(true).anyTimes();
+    expect(indexerMetadataStorageCoordinator.deleteDataSourceMetadata(DATASOURCE)).andReturn(true).anyTimes();
+    expect(indexerMetadataStorageCoordinator.resetDataSourceMetadata(DATASOURCE, new JDBCDataSourceMetadata(new JDBCOffsets(table, ImmutableMap.of(1, 11))))).andReturn(true).anyTimes();
+
     expect(indexerMetadataStorageCoordinator.getDataSourceMetadata(DATASOURCE)).andReturn(
         new JDBCDataSourceMetadata(
             new JDBCOffsets(table, offsets)
@@ -636,6 +638,9 @@ public class JDBCSupervisorTest extends EasyMockSupport {
     expect(taskClient.getStatusAsync(anyString())).andReturn(Futures.immediateFuture(JDBCIndexTask.Status.NOT_STARTED))
         .anyTimes();
     expect(taskClient.getStartTimeAsync(anyString())).andReturn(Futures.immediateFuture(DateTime.now())).anyTimes();
+    expect(indexerMetadataStorageCoordinator.deleteDataSourceMetadata(DATASOURCE)).andReturn(true).anyTimes();
+    expect(indexerMetadataStorageCoordinator.resetDataSourceMetadata(DATASOURCE, new JDBCDataSourceMetadata(new JDBCOffsets(table, ImmutableMap.of(1, 11))))).andReturn(true).anyTimes();
+
     expect(indexerMetadataStorageCoordinator.getDataSourceMetadata(DATASOURCE)).andReturn(
         new JDBCDataSourceMetadata(
             new JDBCOffsets(table, offsets)
@@ -704,9 +709,9 @@ public class JDBCSupervisorTest extends EasyMockSupport {
     expect(taskMaster.getTaskRunner()).andReturn(Optional.of(taskRunner)).anyTimes();
     expect(taskRunner.getRunningTasks()).andReturn(Collections.EMPTY_LIST).anyTimes();
     expect(taskStorage.getActiveTasks()).andReturn(ImmutableList.<Task>of()).anyTimes();
-    expect(indexerMetadataStorageCoordinator.resetDataSourceMetadata(DATASOURCE, new JDBCDataSourceMetadata(
-        new JDBCOffsets(table, offsets)
-    ))).andReturn(true).anyTimes();
+    expect(indexerMetadataStorageCoordinator.deleteDataSourceMetadata(DATASOURCE)).andReturn(true).anyTimes();
+    expect(indexerMetadataStorageCoordinator.resetDataSourceMetadata(DATASOURCE, new JDBCDataSourceMetadata(new JDBCOffsets(table, ImmutableMap.of(1, 11))))).andReturn(true).anyTimes();
+
     expect(indexerMetadataStorageCoordinator.getDataSourceMetadata(DATASOURCE)).andReturn(
         new JDBCDataSourceMetadata(
             new JDBCOffsets(table, offsets)
@@ -791,9 +796,9 @@ public class JDBCSupervisorTest extends EasyMockSupport {
     expect(taskStorage.getActiveTasks()).andReturn(ImmutableList.of(task)).anyTimes();
     expect(taskStorage.getStatus("id1")).andReturn(Optional.of(TaskStatus.running("id1"))).anyTimes();
     expect(taskStorage.getTask("id1")).andReturn(Optional.of(task)).anyTimes();
-    expect(indexerMetadataStorageCoordinator.resetDataSourceMetadata(DATASOURCE, new JDBCDataSourceMetadata(
-        new JDBCOffsets(table, offsets)
-    ))).andReturn(true).anyTimes();
+//    expect(indexerMetadataStorageCoordinator.deleteDataSourceMetadata(DATASOURCE)).andReturn(true);
+//    expect(indexerMetadataStorageCoordinator.resetDataSourceMetadata(DATASOURCE, new JDBCDataSourceMetadata(new JDBCOffsets(table, ImmutableMap.of(1, 11))))).andReturn(true);
+
     expect(indexerMetadataStorageCoordinator.getDataSourceMetadata(DATASOURCE)).andReturn(
         new JDBCDataSourceMetadata(
             new JDBCOffsets(table, offsets)
@@ -872,9 +877,9 @@ public class JDBCSupervisorTest extends EasyMockSupport {
     expect(taskStorage.getActiveTasks()).andReturn(ImmutableList.of(task)).anyTimes();
     expect(taskStorage.getStatus("id1")).andReturn(Optional.of(TaskStatus.running("id1"))).anyTimes();
     expect(taskStorage.getTask("id1")).andReturn(Optional.of(task)).anyTimes();
-    expect(indexerMetadataStorageCoordinator.resetDataSourceMetadata(DATASOURCE, new JDBCDataSourceMetadata(
-        new JDBCOffsets(table, offsets)
-    ))).andReturn(true).anyTimes();
+//    expect(indexerMetadataStorageCoordinator.deleteDataSourceMetadata(DATASOURCE)).andReturn(true);
+//    expect(indexerMetadataStorageCoordinator.resetDataSourceMetadata(DATASOURCE, new JDBCDataSourceMetadata(new JDBCOffsets(table, ImmutableMap.of(1, 11))))).andReturn(true);
+
     expect(indexerMetadataStorageCoordinator.getDataSourceMetadata(DATASOURCE)).andReturn(
         new JDBCDataSourceMetadata(
             new JDBCOffsets(table, offsets)
@@ -1027,9 +1032,8 @@ public class JDBCSupervisorTest extends EasyMockSupport {
     expect(taskMaster.getTaskRunner()).andReturn(Optional.of(taskRunner)).anyTimes();
     expect(taskRunner.getRunningTasks()).andReturn(Collections.EMPTY_LIST).anyTimes();
     expect(taskStorage.getActiveTasks()).andReturn(ImmutableList.<Task>of()).anyTimes();
-    expect(indexerMetadataStorageCoordinator.resetDataSourceMetadata(DATASOURCE, new JDBCDataSourceMetadata(
-        new JDBCOffsets(table, offsets)
-    ))).andReturn(true).anyTimes();
+//    expect(indexerMetadataStorageCoordinator.deleteDataSourceMetadata(DATASOURCE)).andReturn(true);
+//    expect(indexerMetadataStorageCoordinator.resetDataSourceMetadata(DATASOURCE, new JDBCDataSourceMetadata(new JDBCOffsets(table, ImmutableMap.of(1, 11))))).andReturn(true);
     expect(indexerMetadataStorageCoordinator.getDataSourceMetadata(DATASOURCE)).andReturn(
         new JDBCDataSourceMetadata(
             new JDBCOffsets(table, offsets)
@@ -1073,9 +1077,9 @@ public class JDBCSupervisorTest extends EasyMockSupport {
     expect(taskMaster.getTaskRunner()).andReturn(Optional.of(taskRunner)).anyTimes();
     expect(taskRunner.getRunningTasks()).andReturn(Collections.EMPTY_LIST).anyTimes();
     expect(taskStorage.getActiveTasks()).andReturn(ImmutableList.<Task>of()).anyTimes();
-    expect(indexerMetadataStorageCoordinator.resetDataSourceMetadata(DATASOURCE, new JDBCDataSourceMetadata(
-        new JDBCOffsets(table, offsets)
-    ))).andReturn(true).anyTimes();
+    expect(indexerMetadataStorageCoordinator.deleteDataSourceMetadata(DATASOURCE)).andReturn(true).anyTimes();
+    expect(indexerMetadataStorageCoordinator.resetDataSourceMetadata(DATASOURCE, new JDBCDataSourceMetadata(new JDBCOffsets(table, ImmutableMap.of(1, 11))))).andReturn(true).anyTimes();
+
     expect(indexerMetadataStorageCoordinator.getDataSourceMetadata(DATASOURCE)).andReturn(
         new JDBCDataSourceMetadata(
             new JDBCOffsets(table, offsets)
@@ -1111,9 +1115,11 @@ public class JDBCSupervisorTest extends EasyMockSupport {
         .andReturn(Futures.immediateFuture(DateTime.now()));
     taskQueue.shutdown(EasyMock.contains("sequenceName-0"));
     taskQueue.shutdown(EasyMock.contains("sequenceName-0"));
+
     expect(taskClient.pauseAsync(EasyMock.contains("sequenceName-0")))
         .andReturn(Futures.immediateFuture((Map<Integer, Integer>) ImmutableMap.of(0, 10)))
         .andReturn(Futures.immediateFuture((Map<Integer, Integer>) ImmutableMap.of(0, 10)));
+
     expectLastCall().times(1);
     expect(taskQueue.add(capture(captured))).andReturn(true).times(2);
     replay(taskStorage, taskRunner, taskClient, taskQueue);
@@ -1138,9 +1144,9 @@ public class JDBCSupervisorTest extends EasyMockSupport {
     expect(taskMaster.getTaskRunner()).andReturn(Optional.of(taskRunner)).anyTimes();
     expect(taskRunner.getRunningTasks()).andReturn(Collections.EMPTY_LIST).anyTimes();
     expect(taskStorage.getActiveTasks()).andReturn(ImmutableList.<Task>of()).anyTimes();
-    expect(indexerMetadataStorageCoordinator.resetDataSourceMetadata(DATASOURCE, new JDBCDataSourceMetadata(
-        new JDBCOffsets(table, offsets)
-    ))).andReturn(true).anyTimes();
+    expect(indexerMetadataStorageCoordinator.deleteDataSourceMetadata(DATASOURCE)).andReturn(true).anyTimes();
+    expect(indexerMetadataStorageCoordinator.resetDataSourceMetadata(DATASOURCE, new JDBCDataSourceMetadata(new JDBCOffsets(table, ImmutableMap.of(1, 11))))).andReturn(true).anyTimes();
+
     expect(indexerMetadataStorageCoordinator.getDataSourceMetadata(DATASOURCE)).andReturn(
         new JDBCDataSourceMetadata(
             new JDBCOffsets(table, offsets)
@@ -1306,9 +1312,9 @@ public class JDBCSupervisorTest extends EasyMockSupport {
     expect(taskRunner.getRunningTasks()).andReturn(Collections.EMPTY_LIST).anyTimes();
     expect(taskStorage.getActiveTasks()).andReturn(ImmutableList.<Task>of()).anyTimes();
     expect(taskQueue.add(anyObject(Task.class))).andReturn(true);
-    expect(indexerMetadataStorageCoordinator.resetDataSourceMetadata(DATASOURCE, new JDBCDataSourceMetadata(
-        new JDBCOffsets(table, offsets)
-    ))).andReturn(true).anyTimes();
+//    expect(indexerMetadataStorageCoordinator.deleteDataSourceMetadata(DATASOURCE)).andReturn(true);
+//    expect(indexerMetadataStorageCoordinator.resetDataSourceMetadata(DATASOURCE, new JDBCDataSourceMetadata(new JDBCOffsets(table, ImmutableMap.of(1, 11))))).andReturn(true);
+
     expect(indexerMetadataStorageCoordinator.getDataSourceMetadata(DATASOURCE)).andReturn(
         new JDBCDataSourceMetadata(
             new JDBCOffsets(table, offsets)
@@ -1338,9 +1344,9 @@ public class JDBCSupervisorTest extends EasyMockSupport {
     expect(taskMaster.getTaskRunner()).andReturn(Optional.of(taskRunner)).anyTimes();
     expect(taskRunner.getRunningTasks()).andReturn(Collections.EMPTY_LIST).anyTimes();
     expect(taskStorage.getActiveTasks()).andReturn(ImmutableList.<Task>of()).anyTimes();
-    expect(indexerMetadataStorageCoordinator.resetDataSourceMetadata(DATASOURCE, new JDBCDataSourceMetadata(
-        new JDBCOffsets(table, offsets)
-    ))).andReturn(true).anyTimes();
+//    expect(indexerMetadataStorageCoordinator.deleteDataSourceMetadata(DATASOURCE)).andReturn(true);
+//    expect(indexerMetadataStorageCoordinator.resetDataSourceMetadata(DATASOURCE, new JDBCDataSourceMetadata(new JDBCOffsets(table, ImmutableMap.of(1, 11))))).andReturn(true);
+
     expect(indexerMetadataStorageCoordinator.getDataSourceMetadata(DATASOURCE)).andReturn(
         new JDBCDataSourceMetadata(
             new JDBCOffsets(table, offsets)
@@ -1394,9 +1400,9 @@ public class JDBCSupervisorTest extends EasyMockSupport {
     expect(taskMaster.getTaskRunner()).andReturn(Optional.of(taskRunner)).anyTimes();
     expect(taskRunner.getRunningTasks()).andReturn(Collections.EMPTY_LIST).anyTimes();
     expect(taskStorage.getActiveTasks()).andReturn(ImmutableList.<Task>of()).anyTimes();
-    expect(indexerMetadataStorageCoordinator.resetDataSourceMetadata(DATASOURCE, new JDBCDataSourceMetadata(
-        new JDBCOffsets(table, offsets)
-    ))).andReturn(true).anyTimes();
+//    expect(indexerMetadataStorageCoordinator.deleteDataSourceMetadata(DATASOURCE)).andReturn(true);
+//    expect(indexerMetadataStorageCoordinator.resetDataSourceMetadata(DATASOURCE, new JDBCDataSourceMetadata(new JDBCOffsets(table, ImmutableMap.of(1, 11))))).andReturn(true);
+
     expect(indexerMetadataStorageCoordinator.getDataSourceMetadata(DATASOURCE)).andReturn(
         new JDBCDataSourceMetadata(
             new JDBCOffsets(table, offsets)
@@ -1412,7 +1418,7 @@ public class JDBCSupervisorTest extends EasyMockSupport {
 
     JDBCDataSourceMetadata resetMetadata = new JDBCDataSourceMetadata(new JDBCOffsets(
         table,
-        ImmutableMap.of(0, 10)
+        ImmutableMap.of(1, 11)
     ));
 
     reset(indexerMetadataStorageCoordinator);

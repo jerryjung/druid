@@ -90,7 +90,7 @@ public class JDBCIndexTask extends AbstractTask implements ChatHandler {
   private static final Random RANDOM = new Random();
   private static final long POLL_TIMEOUT = 100;
   private static final long LOCK_ACQUIRE_TIMEOUT_SECONDS = 15;
-  private static final String METADATA_NEXT_PARTITIONS = "nextPartitions";
+  private static final String METADATA_NEXT_OFFSETS = "nextOffsets";
   private final DataSchema dataSchema;
   private final MapInputRowParser parser;
   private final JDBCTuningConfig tuningConfig;
@@ -264,7 +264,7 @@ public class JDBCIndexTask extends AbstractTask implements ChatHandler {
       } else {
         final Map<String, Object> restoredMetadataMap = (Map) restoredMetadata;
         final JDBCOffsets restoredNextPartitions = toolbox.getObjectMapper().convertValue(
-            restoredMetadataMap.get(METADATA_NEXT_PARTITIONS),
+            restoredMetadataMap.get(METADATA_NEXT_OFFSETS),
             JDBCOffsets.class
         );
         nextOffsets.putAll(restoredNextPartitions.getOffsetMaps());
@@ -303,7 +303,7 @@ public class JDBCIndexTask extends AbstractTask implements ChatHandler {
             @Override
             public Object getMetadata() {
               return ImmutableMap.of(
-                  METADATA_NEXT_PARTITIONS, new JDBCOffsets(
+                  METADATA_NEXT_OFFSETS, new JDBCOffsets(
                       ioConfig.getJdbcOffsets().getTable(),
                       snapshot
                   )
@@ -449,7 +449,8 @@ public class JDBCIndexTask extends AbstractTask implements ChatHandler {
           org.skife.jdbi.v2.Query<Map<String, Object>> maxItemQuery = handle.createQuery(makeMaxQuery(ioConfig.getJdbcOffsets()));
           Map<String, Object> map = maxItemQuery.list(1).get(0);
           long currOffset = maxItemQuery != null ? (long) maxItemQuery.list(1).get(0).get("MAX") : 0;
-          nextOffsets.replace(
+          nextOffsets.clear();
+          nextOffsets.put(
               (int) currOffset,
               (int) currOffset + ioConfig.getInterval()
           );
@@ -468,7 +469,7 @@ public class JDBCIndexTask extends AbstractTask implements ChatHandler {
       final TransactionalSegmentPublisher publisher = (segments, commitMetadata) -> {
 
         final JDBCOffsets finalOffsets = toolbox.getObjectMapper().convertValue(
-            ((Map) commitMetadata).get(METADATA_NEXT_PARTITIONS),
+            ((Map) commitMetadata).get(METADATA_NEXT_OFFSETS),
             JDBCOffsets.class
         );
         // Sanity check, we should only be publishing things that match our desired end state. //TODO::: Santiny Check!
@@ -482,7 +483,7 @@ public class JDBCIndexTask extends AbstractTask implements ChatHandler {
           action = new SegmentTransactionalInsertAction(
               segments,
               new JDBCDataSourceMetadata(ioConfig.getJdbcOffsets()),
-              new JDBCDataSourceMetadata(ioConfig.getJdbcOffsets()) //TODO::: Check Values
+              new JDBCDataSourceMetadata(finalOffsets) //TODO::: Check Values
           );
         } else {
           action = new SegmentTransactionalInsertAction(segments, null, null);

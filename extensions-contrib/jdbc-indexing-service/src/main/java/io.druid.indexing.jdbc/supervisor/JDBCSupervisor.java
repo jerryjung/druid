@@ -64,9 +64,9 @@ import java.util.stream.Stream;
 
 /**
  * Supervisor responsible for managing the JDBCIndexTasks for a single dataSource. At a high level, the class accepts a
- * {@link JDBCSupervisorSpec} which includes the JDBC topic and configuration as well as an ingestion spec which will
- * be used to generate the indexing tasks. The run loop periodically refreshes its view of the JDBC topic's partitions
- * and the list of running indexing tasks and ensures that all partitions are being read from and that there are enough
+ * {@link JDBCSupervisorSpec} which includes the JDBC table and configuration as well as an ingestion spec which will
+ * be used to generate the indexing tasks. The run loop periodically refreshes its view of the JDBC table
+ * and the list of running indexing tasks and ensures that all tuple are being read from and that there are enough
  * tasks to satisfy the desired number of replicas. As tasks complete, new tasks are queued to process the next range of
  * JDBC offsets.
  */
@@ -84,8 +84,8 @@ public class JDBCSupervisor implements Supervisor {
   // --------------------------------------------------------
 
   /**
-   * A TaskGroup is the main data structure used by JDBCSupervisor to organize and monitor JDBC partitions and
-   * indexing tasks. All the tasks in a TaskGroup should always be doing the same thing (reading the same partitions and
+   * A TaskGroup is the main data structure used by JDBCSupervisor to organize and monitor JDBC offset and
+   * indexing tasks. All the tasks in a TaskGroup should always be doing the same thing (reading the same table and
    * starting from the same offset) and if [replicas] is configured to be 1, a TaskGroup will contain a single task (the
    * exception being if the supervisor started up and discovered and adopted some already running tasks). At any given
    * time, there should only be up to a maximum of [taskCount] actively-reading task groups (tracked in the [taskGroups]
@@ -600,12 +600,12 @@ public class JDBCSupervisor implements Supervisor {
 
   private void updateDataFromJDBC() {
     int taskGroupId = getTaskGroup();
-    Map<Integer, Integer> offsetsMap = new ConcurrentHashMap<Integer, Integer>();
-    groups.putIfAbsent(taskGroupId, offsetsMap);
+    groups.putIfAbsent(taskGroupId,  new ConcurrentHashMap<Integer, Integer>());
+    Map<Integer, Integer> offsetsMap = groups.get(taskGroupId);
 
-    // The starting offset for a new partition in [groups] is initially set to NOT_SET; when a new task group
-    // is created and is assigned partitions, if the offset in [groups] is NOT_SET it will take the starting
-    // offset value from the metadata store, and if it can't find it there, from Kafka. Once a task begins
+    // The starting offset for a table in [groups] is initially set to NOT_SET; when a new task group
+    // is created , if the offset in [groups] is NOT_SET it will take the starting
+    // offset value from the metadata store, and if it can't find it there, from Table. Once a task begins
     // publishing, the offset in groups will be updated to the ending offset of the publishing-but-not-yet-
     // completed task, which will cause the next set of tasks to begin reading from where the previous task left
     // off. If that previous task now fails, we will set the offset in [groups] back to NOT_SET which will
@@ -637,7 +637,7 @@ public class JDBCSupervisor implements Supervisor {
       final JDBCIndexTask jdbcTask = (JDBCIndexTask) task;
       final String taskId = task.getId();
 
-      // Determine which task group this task belongs to based on one of the partitions handled by this task. If we
+      // Determine which task group this task belongs to based on table handled by this task. If we
       // later determine that this task is actively reading, we will make sure that it matches our current partition
       // allocation (getTaskGroup(partition) should return the same value for every partition being read
       // by this task) and kill it if it is not compatible. If the task is instead found to be in the publishing
@@ -1238,16 +1238,6 @@ public class JDBCSupervisor implements Supervisor {
         log.error("Failed to get task queue because I'm not the leader!");
       }
     }
-
-//    HashMap<Integer, Integer> map = new HashMap<>();
-//    map.put((int) taskGroups.get(groupId).offsetsMap.values().toArray()[0], (int) taskGroups.get(groupId).offsetsMap.values().toArray()[0]+ ioConfig.getInterval());
-//    JDBCDataSourceMetadata resetJdbcDataSourceMetadata = new JDBCDataSourceMetadata(new JDBCOffsets(ioConfig.getTable(), map));
-//    indexerMetadataStorageCoordinator.deleteDataSourceMetadata(dataSource);
-//    resetJdbcDataSourceMetadata.plus(resetJdbcDataSourceMetadata);
-//    boolean reset = indexerMetadataStorageCoordinator.resetDataSourceMetadata(dataSource,resetJdbcDataSourceMetadata);
-//    JDBCDataSourceMetadata newJdbcDataSourceMetadata = (JDBCDataSourceMetadata) indexerMetadataStorageCoordinator.getDataSourceMetadata(dataSource);
-//    newJdbcDataSourceMetadata.toString();
-
   }
 
 

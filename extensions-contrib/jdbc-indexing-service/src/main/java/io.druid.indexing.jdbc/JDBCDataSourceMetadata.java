@@ -21,8 +21,11 @@ package io.druid.indexing.jdbc;
 
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.google.common.collect.Maps;
 import io.druid.indexing.overlord.DataSourceMetadata;
 import io.druid.java.util.common.IAE;
+
+import java.util.Map;
 
 public class JDBCDataSourceMetadata implements DataSourceMetadata
 {
@@ -72,7 +75,24 @@ public class JDBCDataSourceMetadata implements DataSourceMetadata
     }
 
     final JDBCDataSourceMetadata that = (JDBCDataSourceMetadata) other;
-    return that;
+
+    if (that.getJdbcOffsets().getTable().equals(jdbcOffsets.getTable())) {
+      // Same topic, merge offsets.
+      final Map<Integer, Integer> newMap = Maps.newHashMap();
+
+      for (Map.Entry<Integer, Integer> entry : jdbcOffsets.getOffsetMaps().entrySet()) {
+        newMap.put(entry.getKey(), entry.getValue());
+      }
+
+      for (Map.Entry<Integer, Integer> entry : that.jdbcOffsets.getOffsetMaps().entrySet()) {
+        newMap.put(entry.getKey(), entry.getValue());
+      }
+
+      return new JDBCDataSourceMetadata(new JDBCOffsets(jdbcOffsets.getTable(), newMap));
+    } else {
+      // Different table, prefer "other".
+      return other;
+    }
   }
 
   @Override
