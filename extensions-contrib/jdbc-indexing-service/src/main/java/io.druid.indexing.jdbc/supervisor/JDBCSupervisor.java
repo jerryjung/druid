@@ -1194,9 +1194,7 @@ public class JDBCSupervisor implements Supervisor {
 
   {
     Map<Integer, Integer> offsetMaps = taskGroups.get(groupId).offsetsMap;
-
     String sequenceName = generateSequenceName(groupId);
-
     DateTime minimumMessageTime = taskGroups.get(groupId).minimumMessageTime.orNull();
 
     JDBCIOConfig jdbcIOConfig = new JDBCIOConfig(
@@ -1399,19 +1397,20 @@ public class JDBCSupervisor implements Supervisor {
   }
 
   private Map<Integer, Integer> getLag(Map<Integer, Integer> currentOffsets) {
-    return currentOffsets != null && latestOffsetsFromJDBC != null ? currentOffsets
-        .entrySet()
-        .stream()
-        .collect(
-            Collectors.toMap(
-                Map.Entry::getKey,
-                e -> latestOffsetsFromJDBC != null
-                    && latestOffsetsFromJDBC.get(e.getKey()) != null
-                    && e.getValue() != null
-                    ? latestOffsetsFromJDBC.get(e.getKey()) - e.getValue()
-                    : null
-            )
-        ) : currentOffsets;
+//    return currentOffsets != null && latestOffsetsFromJDBC != null ? currentOffsets
+//        .entrySet()
+//        .stream()
+//        .collect(
+//            Collectors.toMap(
+//                Map.Entry::getKey,
+//                e -> latestOffsetsFromJDBC != null
+//                    && latestOffsetsFromJDBC.get(e.getKey()) != null
+//                    && e.getValue() != null
+//                    ? latestOffsetsFromJDBC.get(e.getKey()) - e.getValue()
+//                    : null
+//            )
+//        ) : currentOffsets;
+    return currentOffsets;
   }
 
   private Runnable emitLag() {

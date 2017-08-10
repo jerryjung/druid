@@ -133,7 +133,6 @@ public class JDBCIndexTaskTest
   );
   private static final String tableName = "druid_audit";
   private static final Map<Integer, Integer> offsets = new HashMap();
-  private static final String tsName = "TSCOLUMN";
   private static final List<String> columns = Lists.newArrayList(
       "id",
       "audit_key",

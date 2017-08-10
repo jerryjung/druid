@@ -446,15 +446,16 @@ public class JDBCIndexTask extends AbstractTask implements ChatHandler {
               fireDepartmentMetrics.incrementUnparseable();
             }
           }
-          org.skife.jdbi.v2.Query<Map<String, Object>> maxItemQuery = handle.createQuery(makeMaxQuery(ioConfig.getJdbcOffsets()));
-          Map<String, Object> map = maxItemQuery.list(1).get(0);
-          long currOffset = maxItemQuery != null ? (long) maxItemQuery.list(1).get(0).get("MAX") : 0;
-          nextOffsets.clear();
-          nextOffsets.put(
-              (int) currOffset,
-              (int) currOffset + ioConfig.getInterval()
-          );
         }
+        org.skife.jdbi.v2.Query<Map<String, Object>> maxItemQuery = handle.createQuery(makeMaxQuery(ioConfig.getJdbcOffsets()));
+        Map<String, Object> map = maxItemQuery.list(1).get(0);
+        long currOffset = maxItemQuery != null ? (long) maxItemQuery.list(1).get(0).get("MAX") : 0;
+        nextOffsets.clear();
+        nextOffsets.put(
+            (int) currOffset,
+            (int) currOffset + ioConfig.getInterval()
+        );
+
       } finally {
         driver.persist(committerSupplier.get()); // persist pending data
       }

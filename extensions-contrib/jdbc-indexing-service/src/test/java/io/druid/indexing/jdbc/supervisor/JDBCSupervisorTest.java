@@ -746,11 +746,17 @@ public class JDBCSupervisorTest extends EasyMockSupport {
         .andReturn(Futures.immediateFuture(DateTime.now().minusMinutes(1)))
         .andReturn(Futures.immediateFuture(DateTime.now()));
     expect(taskClient.pauseAsync(EasyMock.contains("sequenceName-0")))
-        .andReturn(Futures.immediateFuture((Map<Integer, Integer>) ImmutableMap.of(0, 10)))
-        .andReturn(Futures.immediateFuture((Map<Integer, Integer>) ImmutableMap.of(0, 10)));
+        .andReturn(Futures.immediateFuture((Map<Integer, Integer>) ImmutableMap.of(10, 20)))
+        .andReturn(Futures.immediateFuture((Map<Integer, Integer>) ImmutableMap.of(10, 20)));
     expect(taskQueue.add(capture(captured))).andReturn(true).times(2);
-    taskQueue.shutdown(EasyMock.contains("sequenceName-0"));
-    expectLastCall().times(2);
+    expect(
+        taskClient.setEndOffsetsAsync(
+            EasyMock.contains("sequenceName-0"),
+            EasyMock.eq(ImmutableMap.of(10, 20)),
+            EasyMock.eq(true)
+        )
+    ).andReturn(Futures.immediateFuture(true)).times(2);
+
     replay(taskStorage, taskRunner, taskClient, taskQueue);
 
     supervisor.runInternal();
@@ -767,7 +773,7 @@ public class JDBCSupervisorTest extends EasyMockSupport {
       Assert.assertFalse("pauseAfterRead", taskConfig.isPauseAfterRead());
 
       Assert.assertEquals(table, taskConfig.getJdbcOffsets().getTable());
-      Assert.assertEquals(10, (long) taskConfig.getJdbcOffsets().getOffsetMaps().get(0));
+      Assert.assertEquals(ImmutableMap.of(10,20), taskConfig.getJdbcOffsets().getOffsetMaps());
     }
   }
 
