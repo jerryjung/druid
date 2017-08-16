@@ -77,7 +77,7 @@ public class JDBCDataSourceMetadata implements DataSourceMetadata
     final JDBCDataSourceMetadata that = (JDBCDataSourceMetadata) other;
 
     if (that.getJdbcOffsets().getTable().equals(jdbcOffsets.getTable())) {
-      // Same topic, merge offsets.
+      // Same table, merge offsets.
       final Map<Integer, Integer> newMap = Maps.newHashMap();
 
       for (Map.Entry<Integer, Integer> entry : jdbcOffsets.getOffsetMaps().entrySet()) {
@@ -107,7 +107,21 @@ public class JDBCDataSourceMetadata implements DataSourceMetadata
     }
 
     final JDBCDataSourceMetadata that = (JDBCDataSourceMetadata) other;
-    return this;
+    if (that.getJdbcOffsets().getTable().equals(jdbcOffsets.getTable())) {
+      // Same table, remove partitions present in "that" from "this"
+      final Map<Integer, Integer> newMap = Maps.newHashMap();
+
+      for (Map.Entry<Integer, Integer> entry : jdbcOffsets.getOffsetMaps().entrySet()) {
+        if(!that.getJdbcOffsets().getOffsetMaps().containsKey(entry.getKey())) {
+          newMap.put(entry.getKey(), entry.getValue());
+        }
+      }
+
+      return new JDBCDataSourceMetadata(new JDBCOffsets(jdbcOffsets.getTable(), newMap));
+    } else {
+      // Different table, prefer "this".
+      return this;
+    }
   }
 
   @Override
