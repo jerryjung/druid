@@ -1202,28 +1202,29 @@ public class JDBCSupervisor implements Supervisor {
     ImmutableMap.Builder<Integer, Integer> builder = ImmutableMap.builder();
     for (Map.Entry<Integer, Integer> entry : groups.get(groupId).entrySet()) {
       Integer partition = entry.getKey();
-      Integer endOffset = entry.getValue();
-      if (endOffset != null) {
+      Integer offset = entry.getValue();
+      if (offset != null && offset != NOT_SET) {
         // if we are given a startingOffset (set by a previous task group which is pending completion) then use it
-        builder.put(partition, endOffset);
+        builder.put(partition, offset);
       } else {
-        HashMap<Integer, Integer> map = (HashMap<Integer, Integer>) getOffsetFromStorage();
-        builder.put(partition, (int) map.values().toArray()[0]);
+        builder.put(partition, getOffsetFromStorage());
       }
     }
     return builder.build();
   }
 
 
-  private Map<Integer, Integer> getOffsetFromStorage() {
+  private int getOffsetFromStorage() {
+    int offset;
     Map<Integer, Integer> metadataOffsets = getOffsetsFromMetadataStorage();
-    if (metadataOffsets != null) {
-      log.debug("Getting offset [%,d] from metadata storage ", metadataOffsets);
+    if (!metadataOffsets.isEmpty()) {
+      log.info("Getting offset [%s] from metadata storage ", metadataOffsets);
+      offset = (int)metadataOffsets.values().toArray()[0];
     } else { //If there is no metadata from storage, set the initial config value.
-      log.debug("Getting offset [%,d] from io configuration", ioConfig.getJdbcOffsets().getOffsetMaps());
-      metadataOffsets = ioConfig.getJdbcOffsets().getOffsetMaps();
+      log.info("Getting offset [%s] from io configuration", ioConfig.getJdbcOffsets().getOffsetMaps());
+      offset = (int)ioConfig.getJdbcOffsets().getOffsetMaps().values().toArray()[0];
     }
-    return metadataOffsets;
+    return offset;
   }
 
   private Map<Integer, Integer> getOffsetsFromMetadataStorage() {
