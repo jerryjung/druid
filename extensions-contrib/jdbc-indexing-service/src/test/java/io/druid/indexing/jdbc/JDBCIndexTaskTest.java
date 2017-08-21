@@ -873,7 +873,7 @@ public class JDBCIndexTaskTest
       final Boolean resetOffsetAutomatically
   )
   {
-    offsets.put(0,10);
+    offsets.put(0,0);
     final JDBCTuningConfig tuningConfig = new JDBCTuningConfig(
         1000,
         maxRowsPerSegment,

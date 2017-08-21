@@ -248,6 +248,7 @@ public class JDBCSupervisor implements Supervisor {
     synchronized (stateChangeLock) {
       Preconditions.checkState(!started, "already started");
       Preconditions.checkState(!exec.isShutdown(), "already stopped");
+      log.info("Supervisor stared...");
 
       try {
 
@@ -274,6 +275,7 @@ public class JDBCSupervisor implements Supervisor {
             }
         );
         firstRunTime = DateTime.now().plus(ioConfig.getStartDelay());
+        log.info("Supervisor started buildRunTask scheduled.............");
         scheduledExec.scheduleAtFixedRate(
             buildRunTask(),
             ioConfig.getStartDelay().getMillis(),
@@ -425,6 +427,7 @@ public class JDBCSupervisor implements Supervisor {
       lastRunTime = nowTime;
 
       try {
+        log.info("RunInternal called...");
         runInternal();
       } catch (IOException e) {
         e.printStackTrace();
@@ -470,7 +473,7 @@ public class JDBCSupervisor implements Supervisor {
       // Reset everything
       boolean result = indexerMetadataStorageCoordinator.deleteDataSourceMetadata(dataSource);
       log.info("Reset dataSource[%s] - dataSource metadata entry deleted? [%s]", dataSource, result);
-      killTaskGroupForPartitions();
+      killTaskGroupForPartitions(taskGroups.keySet());
     } else if (!(dataSourceMetadata instanceof JDBCDataSourceMetadata)) {
       throw new IAE("Expected JDBCDataSourceMetadata but found instance of [%s]", dataSourceMetadata.getClass());
     } else {
@@ -511,19 +514,20 @@ public class JDBCSupervisor implements Supervisor {
   }
 
 
-  private void killTaskGroupForPartitions() {
-    TaskGroup taskGroup = taskGroups.get(getTaskGroup());
-    if (taskGroup != null) {
-      // kill all tasks in this task group
-      for (String taskId : taskGroup.tasks.keySet()) {
-        log.info("Reset dataSource[%s] - killing task [%s]", dataSource, taskId);
-        killTask(taskId);
+  private void killTaskGroupForPartitions(Set<Integer> partitions) {
+    for (Integer partition : partitions) {
+      TaskGroup taskGroup = taskGroups.get(getTaskGroup(partition));
+      if (taskGroup != null) {
+        // kill all tasks in this task group
+        for (String taskId : taskGroup.tasks.keySet()) {
+          log.info("Reset dataSource[%s] - killing task [%s]", dataSource, taskId);
+          killTask(taskId);
+        }
       }
+      groups.remove(getTaskGroup(partition));
+      taskGroups.remove(getTaskGroup(partition));
     }
-    groups.remove(getTaskGroup());
-    taskGroups.remove(getTaskGroup());
   }
-
 
   @VisibleForTesting
   void gracefulShutdownInternal() throws ExecutionException, InterruptedException, TimeoutException {
@@ -599,26 +603,33 @@ public class JDBCSupervisor implements Supervisor {
 
 
   private void updateDataFromJDBC() {
-    int taskGroupId = getTaskGroup();
-    groups.putIfAbsent(taskGroupId, new ConcurrentHashMap<Integer, Integer>());
-    Map<Integer, Integer> offsetsMap = groups.get(taskGroupId);
 
-    // The starting offset for a table in [groups] is initially set to NOT_SET; when a new task group
-    // is created , if the offset in [groups] is NOT_SET it will take the starting
-    // offset value from the metadata store, and if it can't find it there, from Table. Once a task begins
-    // publishing, the offset in groups will be updated to the ending offset of the publishing-but-not-yet-
-    // completed task, which will cause the next set of tasks to begin reading from where the previous task left
-    // off. If that previous task now fails, we will set the offset in [groups] back to NOT_SET which will
-    // cause successive tasks to again grab their starting offset from metadata store. This mechanism allows us to
-    // start up successive tasks without waiting for the previous tasks to succeed and still be able to handle task
-    // failures during publishing.
+    Map<Integer, Integer> partitions = ioConfig.getJdbcOffsets().getOffsetMaps();
+    int numPartitions = (partitions != null ? partitions.size() : 0);
+    log.info("Found [%d] JDBC partitions for table [%s]", numPartitions, ioConfig.getTable());
 
-    if (offsetsMap.size()==0 && offsetsMap.putIfAbsent(NOT_SET, NOT_SET + ioConfig.getInterval()) == null) {
-      log.info(
-          "New  [%s] added to task group [%d]",
-          ioConfig.getTable(),
-          taskGroupId
-      );
+    for (int partition = 0; partition < numPartitions; partition++) {
+      int taskGroupId = getTaskGroup(partition);
+      groups.putIfAbsent(taskGroupId, new ConcurrentHashMap<Integer, Integer>());
+      Map<Integer, Integer> offsetsMap = groups.get(taskGroupId);
+
+      // The starting offset for a table in [groups] is initially set to NOT_SET; when a new task group
+      // is created , if the offset in [groups] is NOT_SET it will take the starting
+      // offset value from the metadata store, and if it can't find it there, from Table. Once a task begins
+      // publishing, the offset in groups will be updated to the ending offset of the publishing-but-not-yet-
+      // completed task, which will cause the next set of tasks to begin reading from where the previous task left
+      // off. If that previous task now fails, we will set the offset in [groups] back to NOT_SET which will
+      // cause successive tasks to again grab their starting offset from metadata store. This mechanism allows us to
+      // start up successive tasks without waiting for the previous tasks to succeed and still be able to handle task
+      // failures during publishing.
+
+      if (offsetsMap.putIfAbsent(partition, NOT_SET) == null) {
+        log.info(
+            "New  [%s] added to task group [%d]",
+            ioConfig.getTable(),
+            taskGroupId
+        );
+      }
     }
   }
 
@@ -627,6 +638,8 @@ public class JDBCSupervisor implements Supervisor {
     List<String> futureTaskIds = Lists.newArrayList();
     List<ListenableFuture<Boolean>> futures = Lists.newArrayList();
     List<Task> tasks = taskStorage.getActiveTasks();
+
+    log.info("TaskStorage ActiveTasks is [%d]", tasks.size());
 
     for (Task task : tasks) {
       if (!(task instanceof JDBCIndexTask) || !dataSource.equals(task.getDataSource())) {
@@ -644,14 +657,15 @@ public class JDBCSupervisor implements Supervisor {
       // state, we will permit it to complete even if it doesn't match our current partition allocation to support
       // seamless schema migration.
 
-      final Integer taskGroupId = getTaskGroup();
+      Iterator<Integer> it = jdbcTask.getIOConfig().getJdbcOffsets().getOffsetMaps().keySet().iterator();
+      final Integer taskGroupId = (it.hasNext() ? getTaskGroup(it.next()) : null);
 
       if (taskGroupId != null) {
         // check to see if we already know about this task, either in [taskGroups] or in [pendingCompletionTaskGroups]
         // and if not add it to taskGroups or pendingCompletionTaskGroups (if status = PUBLISHING)
         TaskGroup taskGroup = taskGroups.get(taskGroupId);
         if (!isTaskInPendingCompletionGroups(taskId) && (taskGroup == null || !taskGroup.tasks.containsKey(taskId))) {
-
+          log.info("TaskGroup info details taskId [%s] in taskGroupId [%s]", taskId, taskGroupId);
           futureTaskIds.add(taskId);
           futures.add(
               Futures.transform(
@@ -670,58 +684,62 @@ public class JDBCSupervisor implements Supervisor {
                         // existing) so that the next tasks will start reading from where this task left off
                         Map<Integer, Integer> publishingTaskCurrentOffsets = taskClient.getCurrentOffsets(taskId, true);
                         for (Map.Entry<Integer, Integer> entry : publishingTaskCurrentOffsets.entrySet()) {
-                          Integer startOffset = entry.getKey();
+                          Integer partition = entry.getKey();
                           Integer endOffset = entry.getValue();
-                          ConcurrentHashMap<Integer, Integer> offsetsMap = (ConcurrentHashMap<Integer, Integer>) groups.get(taskGroupId);
-//                          boolean succeeded;
-//                          do {
-//                          succeeded = true;
-                          offsetsMap.clear();
-                          offsetsMap.putIfAbsent(startOffset, endOffset);
-//                            if (previousOffset != null && previousOffset < endOffset) {
-//                              succeeded = offsets.replace(startOffset, previousOffset, endOffset);
-//                            }
-//                          } while (!succeeded);
+                          log.info("Current offset is [%s]", endOffset);
+                          ConcurrentHashMap<Integer, Integer> offsetsMap = (ConcurrentHashMap<Integer, Integer>) groups.get(getTaskGroup(partition));
+                          boolean succeeded;
+                          do {
+                            succeeded = true;
+                            Integer previousOffset = offsetsMap.putIfAbsent(partition, endOffset);
+                            if (previousOffset != null && previousOffset < endOffset) {
+                              succeeded = offsetsMap.replace(partition, previousOffset, endOffset);
+                            }
+                          } while (!succeeded);
                         }
 
                       } else {
-                        if (!taskGroupId.equals(getTaskGroup())) {
-                          log.warn(
-                              "Stopping task [%s] which does not match the expected partition allocation",
-                              taskId
-                          );
-                          try {
-                            stopTask(taskId, false).get(futureTimeoutInSeconds, TimeUnit.SECONDS);
-                          } catch (InterruptedException | ExecutionException | TimeoutException e) {
-                            log.warn(e, "Exception while stopping task");
+                        for (Integer partition : jdbcTask.getIOConfig()
+                            .getJdbcOffsets().getOffsetMaps()
+                            .keySet()) {
+                          if (!taskGroupId.equals(getTaskGroup(partition))) {
+                            log.warn(
+                                "Stopping task [%s] which does not match the expected partition allocation",
+                                taskId
+                            );
+                            try {
+                              stopTask(taskId, false).get(futureTimeoutInSeconds, TimeUnit.SECONDS);
+                            } catch (InterruptedException | ExecutionException | TimeoutException e) {
+                              log.warn(e, "Exception while stopping task");
+                            }
+                            return false;
                           }
-                          return false;
-                        }
 
-                        if (taskGroups.putIfAbsent(
-                            taskGroupId,
-                            new TaskGroup(
-                                ImmutableMap.copyOf(jdbcTask.getIOConfig()
-                                    .getJdbcOffsets().getOffsetMaps())
-                                , jdbcTask.getIOConfig().getMinimumMessageTime()
-                            )
-                        ) == null) {
-                          log.debug("Created new task group [%d]", taskGroupId);
-                        }
-
-                        if (!isTaskCurrent(taskGroupId, taskId)) {
-                          log.info(
-                              "Stopping task [%s] which does not match the expected parameters and ingestion spec",
-                              taskId
-                          );
-                          try {
-                            stopTask(taskId, false).get(futureTimeoutInSeconds, TimeUnit.SECONDS);
-                          } catch (InterruptedException | ExecutionException | TimeoutException e) {
-                            log.warn(e, "Exception while stopping task");
+                          if (taskGroups.putIfAbsent(
+                              taskGroupId,
+                              new TaskGroup(
+                                  ImmutableMap.copyOf(jdbcTask.getIOConfig()
+                                      .getJdbcOffsets().getOffsetMaps())
+                                  , jdbcTask.getIOConfig().getMinimumMessageTime()
+                              )
+                          ) == null) {
+                            log.info("Created new task group [%d] from discoverTasks", taskGroupId);
                           }
-                          return false;
-                        } else {
-                          taskGroups.get(taskGroupId).tasks.putIfAbsent(taskId, new TaskData());
+
+                          if (!isTaskCurrent(taskGroupId, taskId)) {
+                            log.info(
+                                "Stopping task [%s] which does not match the expected parameters and ingestion spec",
+                                taskId
+                            );
+                            try {
+                              stopTask(taskId, false).get(futureTimeoutInSeconds, TimeUnit.SECONDS);
+                            } catch (InterruptedException | ExecutionException | TimeoutException e) {
+                              log.warn(e, "Exception while stopping task");
+                            }
+                            return false;
+                          } else {
+                            taskGroups.get(taskGroupId).tasks.putIfAbsent(taskId, new TaskData());
+                          }
                         }
                       }
                       return true;
@@ -753,6 +771,7 @@ public class JDBCSupervisor implements Supervisor {
 
     CopyOnWriteArrayList<TaskGroup> taskGroupList = pendingCompletionTaskGroups.get(groupId);
     for (TaskGroup taskGroup : taskGroupList) {
+      log.info("TaskGroup Offset Info [%s] vs offsetMaps [%s]", taskGroup.offsetsMap, offsetMaps);
       if (taskGroup.offsetsMap.equals(offsetMaps)) {
         if (taskGroup.tasks.putIfAbsent(taskId, new TaskData()) == null) {
           log.info("Added discovered task [%s] to existing pending task group", taskId);
@@ -875,7 +894,9 @@ public class JDBCSupervisor implements Supervisor {
         pendingCompletionTaskGroups.get(groupId).add(group);
 
         // set endOffsets as the next startOffsets
-        groups.put(groupId, endOffsets);
+        for (Map.Entry<Integer, Integer> entry : endOffsets.entrySet()) {
+          groups.get(groupId).put(entry.getKey(), entry.getValue());
+        }
       } else {
         log.warn(
             "All tasks in group [%s] failed to transition to publishing state, killing tasks [%s]",
@@ -1142,7 +1163,7 @@ public class JDBCSupervisor implements Supervisor {
     // check that there is a current task group for each group of partitions in [groups]
     for (Integer groupId : groups.keySet()) {
       if (!taskGroups.containsKey(groupId)) {
-        log.info("Creating new task group [%d", groupId);
+        log.info("Creating new task group [%d] for partitions %s", groupId, groups.get(groupId).keySet());
 
         Optional<DateTime> minimumMessageTime = (ioConfig.getLateMessageRejectionPeriod().isPresent() ? Optional.of(
             DateTime.now().minus(ioConfig.getLateMessageRejectionPeriod().get())
@@ -1154,10 +1175,11 @@ public class JDBCSupervisor implements Supervisor {
 
     // iterate through all the current task groups and make sure each one has the desired number of replica tasks
     boolean createdTask = false;
+
+    log.info("Current number of task Groups [%d], createdTask status is [%b]", taskGroups.size(), createdTask);
     for (Map.Entry<Integer, TaskGroup> entry : taskGroups.entrySet()) {
       TaskGroup taskGroup = entry.getValue();
       Integer groupId = entry.getKey();
-
       if (ioConfig.getReplicas() > taskGroup.tasks.size()) {
         log.info(
             "Number of tasks [%d] does not match configured numReplicas [%d] in task group [%d], creating more tasks",
@@ -1171,6 +1193,7 @@ public class JDBCSupervisor implements Supervisor {
     if (createdTask && firstRunTime.isBeforeNow()) {
       // Schedule a run event after a short delay to update our internal data structures with the new tasks that were
       // just created. This is mainly for the benefit of the status API in situations where the run period is lengthy.
+      log.info("Create New Tasks....");
       scheduledExec.schedule(buildRunTask(), 5000, TimeUnit.MILLISECONDS);
     }
   }
@@ -1178,14 +1201,14 @@ public class JDBCSupervisor implements Supervisor {
   private ImmutableMap<Integer, Integer> generateStartingOffsetsForGroup(int groupId) {
     ImmutableMap.Builder<Integer, Integer> builder = ImmutableMap.builder();
     for (Map.Entry<Integer, Integer> entry : groups.get(groupId).entrySet()) {
-      Integer startOffset = entry.getKey();
+      Integer partition = entry.getKey();
       Integer endOffset = entry.getValue();
       if (endOffset != null) {
         // if we are given a startingOffset (set by a previous task group which is pending completion) then use it
-        builder.put(startOffset, endOffset);
+        builder.put(partition, endOffset);
       } else {
         HashMap<Integer, Integer> map = (HashMap<Integer, Integer>) getOffsetFromStorage();
-        builder.put((int) map.keySet().toArray()[0], (int) map.values().toArray()[0]);
+        builder.put(partition, (int) map.values().toArray()[0]);
       }
     }
     return builder.build();
@@ -1227,6 +1250,7 @@ public class JDBCSupervisor implements Supervisor {
   private void createJDBCTasksForGroup(int groupId, int replicas) throws IOException
 
   {
+    log.info("CreateJDBCTasksForGroup by [%s] and Offsets = [%s]", groupId, taskGroups.get(groupId).offsetsMap);
     Map<Integer, Integer> offsetMaps = taskGroups.get(groupId).offsetsMap;
     String sequenceName = generateSequenceName(groupId);
     DateTime minimumMessageTime = taskGroups.get(groupId).minimumMessageTime.orNull();
@@ -1329,8 +1353,8 @@ public class JDBCSupervisor implements Supervisor {
     }
   }
 
-  private int getTaskGroup() {
-    return 1 % ioConfig.getTaskCount(); //TODO:::check task group ID
+  private int getTaskGroup(int partition) {
+    return partition % ioConfig.getTaskCount();
   }
 
   private boolean isTaskInPendingCompletionGroups(String taskId) {
@@ -1404,7 +1428,7 @@ public class JDBCSupervisor implements Supervisor {
             taskReports.add(
                 new TaskReportData(
                     taskId,
-                  includeOffsets ? taskGroup.offsetsMap : null,
+                    includeOffsets ? taskGroup.offsetsMap : null,
 //                    includeOffsets ? currentOffsets: null,
                     startTime,
                     remainingSeconds,
@@ -1425,11 +1449,19 @@ public class JDBCSupervisor implements Supervisor {
   }
 
   private Runnable buildRunTask() {
+    log.info("BuildRunTask.....");
     return () -> notices.add(new RunNotice());
   }
 
   private Map<Integer, Integer> getHighestCurrentOffsets() {
-    return taskGroups.get(getTaskGroup()).offsetsMap;
+//    return taskGroups
+//        .values()
+//        .stream()
+//        .flatMap(taskGroup -> taskGroup.tasks.entrySet().stream())
+//        .flatMap(taskData -> taskData.getValue().currentOffsets.entrySet().stream())
+//        .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue, Integer::max));
+
+    return taskGroups.get(getTaskGroup(0)).offsetsMap;
   }
 
   private Map<Integer, Integer> getLag(Map<Integer, Integer> currentOffsets) {
@@ -1464,13 +1496,13 @@ public class JDBCSupervisor implements Supervisor {
   }
 
   private void updateLatestOffsetsFromJDBC() throws IOException {
-
     latestOffsetsFromJDBC = getHighestCurrentOffsets() != null ? getHighestCurrentOffsets() : ioConfig.getJdbcOffsets().getOffsetMaps();
     //TODO::: update offset info
   }
 
 
   private void updateCurrentOffsets() throws InterruptedException, ExecutionException, TimeoutException {
+    log.info("updateCurrentOffsets called");
     final List<ListenableFuture<Void>> futures = Stream.concat(
         taskGroups.values().stream().flatMap(taskGroup -> taskGroup.tasks.entrySet().stream()),
         pendingCompletionTaskGroups.values()
@@ -1488,6 +1520,7 @@ public class JDBCSupervisor implements Supervisor {
             }
         )
     ).collect(Collectors.toList());
+    log.info("CurrentOffsets size is " + taskGroups.values().size());
 
     Futures.successfulAsList(futures).get(futureTimeoutInSeconds, TimeUnit.SECONDS);
   }

@@ -88,7 +88,6 @@ public class JDBCIndexTask extends AbstractTask implements ChatHandler {
   private static final EmittingLogger log = new EmittingLogger(JDBCIndexTask.class);
   private static final String TYPE = "index_jdbc";
   private static final Random RANDOM = new Random();
-  private static final long POLL_TIMEOUT = 100;
   private static final long LOCK_ACQUIRE_TIMEOUT_SECONDS = 15;
   private static final String METADATA_NEXT_OFFSETS = "nextOffsets";
   private final DataSchema dataSchema;
@@ -290,8 +289,11 @@ public class JDBCIndexTask extends AbstractTask implements ChatHandler {
 
 
       // Set up sequenceNames.
-      final Map<Map<Integer, Integer>, String> sequenceNames = Maps.newHashMap();
-      sequenceNames.put(nextOffsets, String.format("%s_%s", ioConfig.getBaseSequenceName(), nextOffsets));
+
+      final Map<Integer, String> sequenceNames = Maps.newHashMap();
+      for (Integer partitionNum : nextOffsets.keySet()) {
+        sequenceNames.put(partitionNum, String.format("%s_%s", ioConfig.getBaseSequenceName(), partitionNum));
+      }
 
       // Set up committer.
       final Supplier<Committer> committerSupplier = new Supplier<Committer>() {
@@ -318,8 +320,10 @@ public class JDBCIndexTask extends AbstractTask implements ChatHandler {
           };
         }
       };
+
       status = Status.READING;
       try {
+
         final String query = (ioConfig.getQuery() != null)
             ? ioConfig.getQuery()
             : makeQuery(ioConfig.getColumns(), ioConfig.getJdbcOffsets());
@@ -404,12 +408,13 @@ public class JDBCIndexTask extends AbstractTask implements ChatHandler {
             }
         ).iterator();
 
-        final String sequenceName = sequenceNames.get(nextOffsets); //TODO::: check data
         while (rowIterator.hasNext()) {
           InputRow row = rowIterator.next();
           try {
             if (!ioConfig.getMinimumMessageTime().isPresent() ||
                 !ioConfig.getMinimumMessageTime().get().isAfter(row.getTimestamp())) {
+
+              final String sequenceName = sequenceNames.get(nextOffsets.keySet().toArray()[0]); //TODO::: check data
               final AppenderatorDriverAddResult addResult = driver.add(
                   row,
                   sequenceName,
@@ -448,12 +453,11 @@ public class JDBCIndexTask extends AbstractTask implements ChatHandler {
           }
         }
         org.skife.jdbi.v2.Query<Map<String, Object>> maxItemQuery = handle.createQuery(makeMaxQuery(ioConfig.getJdbcOffsets()));
-        Map<String, Object> map = maxItemQuery.list(1).get(0);
         long currOffset = maxItemQuery != null ? (long) maxItemQuery.list(1).get(0).get("MAX") : 0;
         nextOffsets.clear();
         nextOffsets.put(
-            (int) currOffset,
-            (int) currOffset + ioConfig.getInterval()
+            0, //TODO:::check partition
+            (int) currOffset
         );
 
       } finally {
@@ -559,7 +563,9 @@ public class JDBCIndexTask extends AbstractTask implements ChatHandler {
       handle.close();
     }
 
-    toolbox.getDataSegmentServerAnnouncer().unannounce();
+    toolbox.getDataSegmentServerAnnouncer().
+
+        unannounce();
 
     //TODO::implement
     return
@@ -668,21 +674,32 @@ public class JDBCIndexTask extends AbstractTask implements ChatHandler {
       return Response.status(Response.Status.BAD_REQUEST)
           .entity("Request body must contain a map of { partition:endOffset }")
           .build();
-    } else if (endOffsets != offsets) {
+//    } else if (endOffsets != offsets) {
+//
+//
+//      for (Map.Entry<Integer, Integer> entry : offsets.entrySet()) {
+//        if (entry.getValue().compareTo(nextOffsets.get(entry.getKey())) < 0) {
+//          return Response.status(Response.Status.BAD_REQUEST)
+//              .entity(
+//                  String.format(
+//                      "Request contains partitions not being handled by this task, my partitions: %s",
+//                      endOffsets
+//                  )
+//              )
+//              .build();
+//        }
+//      }
+//    }
 
-
-      for (Map.Entry<Integer, Integer> entry : offsets.entrySet()) {
-        if (entry.getValue().compareTo(nextOffsets.get(entry.getKey())) < 0) {
-          return Response.status(Response.Status.BAD_REQUEST)
-              .entity(
-                  String.format(
-                      "Request contains partitions not being handled by this task, my partitions: %s",
-                      endOffsets
-                  )
+    } else if (!endOffsets.keySet().containsAll(offsets.keySet())) {
+      return Response.status(Response.Status.BAD_REQUEST)
+          .entity(
+              io.druid.java.util.common.StringUtils.format(
+                  "Request contains partitions not being handled by this task, my partitions: %s",
+                  endOffsets.keySet()
               )
-              .build();
-        }
-      }
+          )
+          .build();
     }
 
     pauseLock.lockInterruptibly();
@@ -836,6 +853,42 @@ public class JDBCIndexTask extends AbstractTask implements ChatHandler {
     );
   }
 
+
+  private Set<Integer> assignPartitionsAndSeekToNext(Handle handle) {
+    final Set<Integer> assignment = Sets.newHashSet();
+    for (Map.Entry<Integer, Integer> entry : nextOffsets.entrySet()) {
+      final long endOffset = endOffsets.get(entry.getKey());
+      if (entry.getValue() < endOffset) {
+        assignment.add(entry.getKey());
+      } else if (entry.getValue() == endOffset) {
+        log.info("Finished reading partition[%d].", entry.getKey());
+      } else {
+        throw new ISE(
+            "WTF?! Cannot start from offset[%,d] > endOffset[%,d]",
+            entry.getValue(),
+            endOffset
+        );
+      }
+    }
+
+    // Seek to starting offsets.
+
+
+    org.skife.jdbi.v2.Query<Map<String, Object>> maxItemQuery = handle.createQuery(makeMaxQuery(ioConfig.getJdbcOffsets()));
+    long currOffset = maxItemQuery != null ? (long) maxItemQuery.list(1).get(0).get("MAX") : 0;
+
+    maxItemQuery = handle.createQuery(checkMaxQuery());
+    long maxOffset = maxItemQuery != null ? (long) maxItemQuery.list(1).get(0).get("MAX") : 0;
+
+    if (currOffset <= maxOffset) {
+      assignment.add((int) currOffset);
+    } else {
+      assignment.clear();
+    }
+    return assignment;
+  }
+
+
   /**
    * Checks if the pauseRequested flag was set and if so blocks:
    * a) if pauseMillis == PAUSE_FOREVER, until pauseRequested is cleared
@@ -896,6 +949,7 @@ public class JDBCIndexTask extends AbstractTask implements ChatHandler {
 
   private String makeQuery(List<String> requiredFields, JDBCOffsets partition) {
 
+    int whereCondition = (int) partition.getOffsetMaps().values().toArray()[0] + ioConfig.getInterval();
     if (requiredFields == null) {
       return new StringBuilder("SELECT *  FROM ").append(ioConfig.getTableName()).toString();
     }
@@ -904,21 +958,31 @@ public class JDBCIndexTask extends AbstractTask implements ChatHandler {
         .append(ioConfig.getTableName())
         .append(" where ")
         .append(" id >="
-            + partition.getOffsetMaps().keySet().toArray()[0]
+            + partition.getOffsetMaps().values().toArray()[0]
             + " and id<="
-            + partition.getOffsetMaps().values().toArray()[0])
+            + whereCondition)
         .toString();
   }
 
   private String makeMaxQuery(JDBCOffsets partition) {
+    int whereCondition = (int) partition.getOffsetMaps().values().toArray()[0] + ioConfig.getInterval();
+
     return new StringBuilder("SELECT ").append("MAX(ID) AS MAX")
         .append(" FROM ")
         .append(ioConfig.getTableName())
         .append(" WHERE ")
         .append(" id >="
-            + partition.getOffsetMaps().keySet().toArray()[0]
+            + partition.getOffsetMaps().values().toArray()[0]
             + " and id<="
-            + partition.getOffsetMaps().values().toArray()[0])
+            + whereCondition)
+        .toString();
+  }
+
+
+  private String checkMaxQuery() {
+    return new StringBuilder("SELECT ").append("MAX(ID) AS MAX")
+        .append(" FROM ")
+        .append(ioConfig.getTableName())
         .toString();
   }
 
