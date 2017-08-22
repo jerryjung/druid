@@ -200,7 +200,7 @@ public class JDBCIndexTaskClient
 
   public JDBCIndexTask.Status getStatus(final String id)
   {
-    log.debug("GetStatus task[%s]", id);
+    log.info("GetStatus task[%s]", id);
 
     try {
       final FullResponseHolder response = submitRequest(id, HttpMethod.GET, "status", null, true);

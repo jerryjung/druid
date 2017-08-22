@@ -795,7 +795,7 @@ public class JDBCIndexTaskTest
             true,
             false,
             null,
-            "select * from " + tableName + " limit 5",
+            null,
             columns,
             interval
         ),
@@ -812,7 +812,7 @@ public class JDBCIndexTaskTest
     for (int i = 0; i < 5; i++) {
       Assert.assertEquals(task.getStatus(), JDBCIndexTask.Status.READING);
       // Offset should not be reset
-//      Assert.assertTrue(task.getCurrentOffsets() == 100L);
+//      Assert.assertTrue(task.getCurrentOffsets().get(0) == 100L);
     }
   }
 

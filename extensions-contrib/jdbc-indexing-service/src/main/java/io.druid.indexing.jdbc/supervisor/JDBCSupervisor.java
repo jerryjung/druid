@@ -248,7 +248,7 @@ public class JDBCSupervisor implements Supervisor {
     synchronized (stateChangeLock) {
       Preconditions.checkState(!started, "already started");
       Preconditions.checkState(!exec.isShutdown(), "already stopped");
-      log.info("Supervisor stared...");
+      log.info("Supervisor started...");
 
       try {
 
@@ -275,7 +275,10 @@ public class JDBCSupervisor implements Supervisor {
             }
         );
         firstRunTime = DateTime.now().plus(ioConfig.getStartDelay());
-        log.info("Supervisor started buildRunTask scheduled.............");
+        log.info("Supervisor started buildRunTask scheduled.............[%d],[%d],[%s]",
+            ioConfig.getStartDelay().getMillis(),
+            Math.max(ioConfig.getPeriod().getMillis(), MAX_RUN_FREQUENCY_MILLIS),
+            TimeUnit.MILLISECONDS);
         scheduledExec.scheduleAtFixedRate(
             buildRunTask(),
             ioConfig.getStartDelay().getMillis(),
@@ -660,6 +663,8 @@ public class JDBCSupervisor implements Supervisor {
       Iterator<Integer> it = jdbcTask.getIOConfig().getJdbcOffsets().getOffsetMaps().keySet().iterator();
       final Integer taskGroupId = (it.hasNext() ? getTaskGroup(it.next()) : null);
 
+      log.info("taskGroupId is "+taskGroupId);
+
       if (taskGroupId != null) {
         // check to see if we already know about this task, either in [taskGroups] or in [pendingCompletionTaskGroups]
         // and if not add it to taskGroups or pendingCompletionTaskGroups (if status = PUBLISHING)
@@ -738,6 +743,7 @@ public class JDBCSupervisor implements Supervisor {
                             }
                             return false;
                           } else {
+                            log.info("taskGroup put IfAbsent by [%s]", taskId);
                             taskGroups.get(taskGroupId).tasks.putIfAbsent(taskId, new TaskData());
                           }
                         }
@@ -818,6 +824,7 @@ public class JDBCSupervisor implements Supervisor {
                       long millisRemaining = ioConfig.getTaskDuration().getMillis() - (System.currentTimeMillis()
                           - taskData.startTime.getMillis());
                       if (millisRemaining > 0) {
+                        log.info("buildRunTask scheduled......");
                         scheduledExec.schedule(
                             buildRunTask(),
                             millisRemaining + MAX_RUN_FREQUENCY_MILLIS,
@@ -887,6 +894,8 @@ public class JDBCSupervisor implements Supervisor {
       TaskGroup group = taskGroups.get(groupId);
       Map<Integer, Integer> endOffsets = results.get(j);
 
+      log.info("checkTaskDuration endOffsets is [%s]", endOffsets);
+
       if (endOffsets != null) {
         // set a timeout and put this group in pendingCompletionTaskGroups so that it can be monitored for completion
         group.completionTimeout = DateTime.now().plus(ioConfig.getCompletionTimeout());
@@ -896,6 +905,7 @@ public class JDBCSupervisor implements Supervisor {
         // set endOffsets as the next startOffsets
         for (Map.Entry<Integer, Integer> entry : endOffsets.entrySet()) {
           groups.get(groupId).put(entry.getKey(), entry.getValue());
+          log.info("checkTaskDuration groups info [%d], [%d]", entry.getKey(), entry.getValue());
         }
       } else {
         log.warn(
@@ -909,6 +919,7 @@ public class JDBCSupervisor implements Supervisor {
       }
 
       // remove this task group from the list of current task groups now that it has been handled
+      log.info("TaskGroups removed by [%s]", groupId);
       taskGroups.remove(groupId);
     }
   }
@@ -952,6 +963,7 @@ public class JDBCSupervisor implements Supervisor {
     final List<ListenableFuture<Map<Integer, Integer>>> pauseFutures = Lists.newArrayList();
     final List<String> pauseTaskIds = ImmutableList.copyOf(taskGroup.taskIds());
     for (final String taskId : pauseTaskIds) {
+      log.info("taskClient pauseAsync called by [%s]", taskId);
       pauseFutures.add(taskClient.pauseAsync(taskId));
     }
 
@@ -1180,10 +1192,10 @@ public class JDBCSupervisor implements Supervisor {
     for (Map.Entry<Integer, TaskGroup> entry : taskGroups.entrySet()) {
       TaskGroup taskGroup = entry.getValue();
       Integer groupId = entry.getKey();
-      if (ioConfig.getReplicas() > taskGroup.tasks.size()) {
+      if (ioConfig.getReplicas() > taskGroup.tasks.size() && taskGroup.offsetsMap != null) {
         log.info(
-            "Number of tasks [%d] does not match configured numReplicas [%d] in task group [%d], creating more tasks",
-            taskGroup.tasks.size(), ioConfig.getReplicas(), groupId
+            "Number of tasks [%d] does not match configured numReplicas [%d] in task group [%d], creating more tasks, offsetMap is [%s]",
+            taskGroup.tasks.size(), ioConfig.getReplicas(), groupId, taskGroup.offsetsMap
         );
         createJDBCTasksForGroup(groupId, ioConfig.getReplicas() - taskGroup.tasks.size());
         createdTask = true;
@@ -1219,10 +1231,10 @@ public class JDBCSupervisor implements Supervisor {
     Map<Integer, Integer> metadataOffsets = getOffsetsFromMetadataStorage();
     if (!metadataOffsets.isEmpty()) {
       log.info("Getting offset [%s] from metadata storage ", metadataOffsets);
-      offset = (int)metadataOffsets.values().toArray()[0];
+      offset = (int) metadataOffsets.values().toArray()[0];
     } else { //If there is no metadata from storage, set the initial config value.
       log.info("Getting offset [%s] from io configuration", ioConfig.getJdbcOffsets().getOffsetMaps());
-      offset = (int)ioConfig.getJdbcOffsets().getOffsetMaps().values().toArray()[0];
+      offset = (int) ioConfig.getJdbcOffsets().getOffsetMaps().values().toArray()[0];
     }
     return offset;
   }
@@ -1455,13 +1467,13 @@ public class JDBCSupervisor implements Supervisor {
   }
 
   private Map<Integer, Integer> getHighestCurrentOffsets() {
-//    return taskGroups
-//        .values()
-//        .stream()
-//        .flatMap(taskGroup -> taskGroup.tasks.entrySet().stream())
-//        .flatMap(taskData -> taskData.getValue().currentOffsets.entrySet().stream())
-//        .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue, Integer::max));
 
+//    return taskGroups
+//          .values()
+//          .stream()
+//          .flatMap(taskGroup -> taskGroup.tasks.entrySet().stream())
+//          .flatMap(taskData -> taskData.getValue().currentOffsets.entrySet().stream())
+//          .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue, Integer::max));
     return taskGroups.get(getTaskGroup(0)).offsetsMap;
   }
 
@@ -1514,8 +1526,12 @@ public class JDBCSupervisor implements Supervisor {
         task -> Futures.transform(
             taskClient.getCurrentOffsetsAsync(task.getKey(), false),
             (Function<Map<Integer, Integer>, Void>) (currentOffsets) -> {
+              log.info("TaskClient currentOffsets is [%s]", currentOffsets);
               if (currentOffsets != null && !currentOffsets.isEmpty()) {
                 task.getValue().currentOffsets = currentOffsets;
+                log.info("task.getValue().currentOffsets  is "+ task.getValue().currentOffsets );
+              }else{
+
               }
               return null;
             }

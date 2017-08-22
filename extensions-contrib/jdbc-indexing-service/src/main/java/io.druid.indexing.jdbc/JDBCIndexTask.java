@@ -321,8 +321,24 @@ public class JDBCIndexTask extends AbstractTask implements ChatHandler {
         }
       };
 
+//      Set<Integer> assignment = assignPartitionsAndSeekToNext(handle);
+//      boolean stillReading = !assignment.isEmpty();
       status = Status.READING;
       try {
+//        while (stillReading) {
+//          if (possiblyPause(assignment)) {
+//             The partition assignments may have changed while paused by a call to setEndOffsets() so reassign
+//             partitions upon resuming. This is safe even if the end offsets have not been modified.
+//            assignment = assignPartitionsAndSeekToNext(handle);
+//            if (assignment.isEmpty()) {
+//              log.info("All partitions have been fully read");
+//              publishOnStop = true;
+//              stopRequested = true;
+//            }
+//          }
+//          if (stopRequested) {
+//            break;
+//          }
 
         final String query = (ioConfig.getQuery() != null)
             ? ioConfig.getQuery()
@@ -408,6 +424,9 @@ public class JDBCIndexTask extends AbstractTask implements ChatHandler {
             }
         ).iterator();
 
+        org.skife.jdbi.v2.Query<Map<String, Object>> maxItemQuery = handle.createQuery(makeMaxQuery(ioConfig.getJdbcOffsets()));
+        long currOffset = maxItemQuery != null ? (long) maxItemQuery.list(1).get(0).get("MAX") : 0;
+
         while (rowIterator.hasNext()) {
           InputRow row = rowIterator.next();
           try {
@@ -452,14 +471,16 @@ public class JDBCIndexTask extends AbstractTask implements ChatHandler {
             }
           }
         }
-        org.skife.jdbi.v2.Query<Map<String, Object>> maxItemQuery = handle.createQuery(makeMaxQuery(ioConfig.getJdbcOffsets()));
-        long currOffset = maxItemQuery != null ? (long) maxItemQuery.list(1).get(0).get("MAX") : 0;
-        nextOffsets.clear();
         nextOffsets.put(
-            0, //TODO:::check partition
+            (int)ioConfig.getJdbcOffsets().getOffsetMaps().keySet().toArray()[0],
             (int) currOffset
         );
-
+//          if (nextOffsets.get(record.partition()).equals(endOffsets.get(record.partition()))
+//              && assignment.remove(record.partition())) {
+//            log.info("Finished reading table[%s], partition[%,d].", record.topic(), record.partition());
+//            stillReading = ioConfig.isPauseAfterRead() || !assignment.isEmpty();
+//          }
+//        }
       } finally {
         driver.persist(committerSupplier.get()); // persist pending data
       }
@@ -535,12 +556,7 @@ public class JDBCIndexTask extends AbstractTask implements ChatHandler {
             handedOff.getCommitMetadata()
         );
       }
-
-    } catch (InterruptedException |
-        RejectedExecutionException e
-        )
-
-    {
+    } catch (InterruptedException | RejectedExecutionException e) {
       // handle the InterruptedException that gets wrapped in a RejectedExecutionException
       if (e instanceof RejectedExecutionException
           && (e.getCause() == null || !(e.getCause() instanceof InterruptedException))) {
@@ -563,14 +579,10 @@ public class JDBCIndexTask extends AbstractTask implements ChatHandler {
       handle.close();
     }
 
-    toolbox.getDataSegmentServerAnnouncer().
-
-        unannounce();
+    toolbox.getDataSegmentServerAnnouncer().unannounce();
 
     //TODO::implement
-    return
-
-        success();
+    return success();
 
   }
 
@@ -856,31 +868,26 @@ public class JDBCIndexTask extends AbstractTask implements ChatHandler {
 
   private Set<Integer> assignPartitionsAndSeekToNext(Handle handle) {
     final Set<Integer> assignment = Sets.newHashSet();
-    for (Map.Entry<Integer, Integer> entry : nextOffsets.entrySet()) {
-      final long endOffset = endOffsets.get(entry.getKey());
-      if (entry.getValue() < endOffset) {
-        assignment.add(entry.getKey());
-      } else if (entry.getValue() == endOffset) {
-        log.info("Finished reading partition[%d].", entry.getKey());
-      } else {
-        throw new ISE(
-            "WTF?! Cannot start from offset[%,d] > endOffset[%,d]",
-            entry.getValue(),
-            endOffset
-        );
-      }
-    }
+//    for (Map.Entry<Integer, Integer> entry : nextOffsets.entrySet()) {
+//      final long endOffset = endOffsets.get(entry.getKey());
+//      if (entry.getValue() < endOffset) {
+//        assignment.add(entry.getKey());
+//      } else if (entry.getValue() == endOffset) {
+//        log.info("Finished reading partition[%d].", entry.getKey());
+//      } else {
+//        throw new ISE(
+//            "WTF?! Cannot start from offset[%,d] > endOffset[%,d]",
+//            entry.getValue(),
+//            endOffset
+//        );
+//      }
+//    }
 
     // Seek to starting offsets.
-
-
     org.skife.jdbi.v2.Query<Map<String, Object>> maxItemQuery = handle.createQuery(makeMaxQuery(ioConfig.getJdbcOffsets()));
     long currOffset = maxItemQuery != null ? (long) maxItemQuery.list(1).get(0).get("MAX") : 0;
 
-    maxItemQuery = handle.createQuery(checkMaxQuery());
-    long maxOffset = maxItemQuery != null ? (long) maxItemQuery.list(1).get(0).get("MAX") : 0;
-
-    if (currOffset <= maxOffset) {
+    if (currOffset > (int) endOffsets.values().toArray()[0]) {
       assignment.add((int) currOffset);
     } else {
       assignment.clear();
