@@ -78,13 +78,13 @@ public class JDBCDataSourceMetadata implements DataSourceMetadata
 
     if (that.getJdbcOffsets().getTable().equals(jdbcOffsets.getTable())) {
       // Same table, merge offsets.
-      final Map<Integer, Integer> newMap = Maps.newHashMap();
+      final Map<Integer, Long> newMap = Maps.newHashMap();
 
-      for (Map.Entry<Integer, Integer> entry : jdbcOffsets.getOffsetMaps().entrySet()) {
+      for (Map.Entry<Integer, Long> entry : jdbcOffsets.getOffsetMaps().entrySet()) {
         newMap.put(entry.getKey(), entry.getValue());
       }
 
-      for (Map.Entry<Integer, Integer> entry : that.jdbcOffsets.getOffsetMaps().entrySet()) {
+      for (Map.Entry<Integer, Long> entry : that.jdbcOffsets.getOffsetMaps().entrySet()) {
         newMap.put(entry.getKey(), entry.getValue());
       }
 
@@ -109,9 +109,9 @@ public class JDBCDataSourceMetadata implements DataSourceMetadata
     final JDBCDataSourceMetadata that = (JDBCDataSourceMetadata) other;
     if (that.getJdbcOffsets().getTable().equals(jdbcOffsets.getTable())) {
       // Same table, remove partitions present in "that" from "this"
-      final Map<Integer, Integer> newMap = Maps.newHashMap();
+      final Map<Integer, Long> newMap = Maps.newHashMap();
 
-      for (Map.Entry<Integer, Integer> entry : jdbcOffsets.getOffsetMaps().entrySet()) {
+      for (Map.Entry<Integer, Long> entry : jdbcOffsets.getOffsetMaps().entrySet()) {
         if(!that.getJdbcOffsets().getOffsetMaps().containsKey(entry.getKey())) {
           newMap.put(entry.getKey(), entry.getValue());
         }

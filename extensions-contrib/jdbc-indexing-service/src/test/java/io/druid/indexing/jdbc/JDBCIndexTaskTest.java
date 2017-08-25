@@ -132,7 +132,7 @@ public class JDBCIndexTaskTest
       objectMapper
   );
   private static final String tableName = "druid_audit";
-  private static final Map<Integer, Integer> offsets = new HashMap();
+  private static final Map<Integer, Long> offsets = new HashMap();
   private static final List<String> columns = Lists.newArrayList(
       "id",
       "audit_key",
@@ -611,7 +611,7 @@ public class JDBCIndexTaskTest
     Assert.assertEquals(ImmutableSet.of(desc1, desc2, desc3), publishedDescriptors());
 
     Assert.assertEquals(
-        new JDBCDataSourceMetadata(new JDBCOffsets(tableName, new HashMap<Integer, Integer>(0, 10))),
+        new JDBCDataSourceMetadata(new JDBCOffsets(tableName, new HashMap<Integer, Long>(0, 10L))),
         metadataStorageCoordinator.getDataSourceMetadata(DATA_SCHEMA.getDataSource())
     );
     // Check segments in deep storage
@@ -873,7 +873,7 @@ public class JDBCIndexTaskTest
       final Boolean resetOffsetAutomatically
   )
   {
-    offsets.put(0,0);
+    offsets.put(0,0L);
     final JDBCTuningConfig tuningConfig = new JDBCTuningConfig(
         1000,
         maxRowsPerSegment,

@@ -41,8 +41,8 @@ public class JDBCSupervisorReport extends SupervisorReport
     private final Long durationSeconds;
     private final List<TaskReportData> activeTasks;
     private final List<TaskReportData> publishingTasks;
-    private final Map<Integer, Integer> latestOffsets;
-    private final Map<Integer, Integer> minimumLag;
+    private final Map<Integer, Long> latestOffsets;
+    private final Map<Integer, Long> minimumLag;
     private final Long aggregateLag;
     private final DateTime offsetsLastUpdated;
 
@@ -52,8 +52,8 @@ public class JDBCSupervisorReport extends SupervisorReport
         Integer partitions,
         Integer replicas,
         Long durationSeconds,
-        @Nullable Map<Integer, Integer> latestOffsets,
-        @Nullable Map<Integer, Integer> minimumLag,
+        @Nullable Map<Integer, Long> latestOffsets,
+        @Nullable Map<Integer, Long> minimumLag,
         @Nullable Long aggregateLag,
         @Nullable DateTime offsetsLastUpdated
     )
@@ -115,14 +115,14 @@ public class JDBCSupervisorReport extends SupervisorReport
 
     @JsonProperty
     @JsonInclude(JsonInclude.Include.NON_NULL)
-    public Map<Integer, Integer> getLatestOffsets()
+    public Map<Integer, Long> getLatestOffsets()
     {
       return latestOffsets;
     }
 
     @JsonProperty
     @JsonInclude(JsonInclude.Include.NON_NULL)
-    public Map<Integer, Integer> getMinimumLag()
+    public Map<Integer, Long> getMinimumLag()
     {
       return minimumLag;
     }
@@ -168,8 +168,8 @@ public class JDBCSupervisorReport extends SupervisorReport
       Integer partitions,
       Integer replicas,
       Long durationSeconds,
-      @Nullable Map<Integer, Integer> latestOffsets,
-      @Nullable Map<Integer, Integer> minimumLag,
+      @Nullable Map<Integer, Long> latestOffsets,
+      @Nullable Map<Integer, Long> minimumLag,
       @Nullable Long aggregateLag,
       @Nullable DateTime offsetsLastUpdated
   )

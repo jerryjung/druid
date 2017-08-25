@@ -140,8 +140,8 @@ public class JDBCIndexTaskClientTest extends EasyMockSupport
     Assert.assertEquals(null, client.getStartTime(TEST_ID));
     Assert.assertEquals(ImmutableMap.of(), client.getCurrentOffsets(TEST_ID, true));
     Assert.assertEquals(ImmutableMap.of(), client.getEndOffsets(TEST_ID));
-    Assert.assertEquals(false, client.setEndOffsets(TEST_ID, ImmutableMap.<Integer, Integer>of()));
-    Assert.assertEquals(false, client.setEndOffsets(TEST_ID, ImmutableMap.<Integer, Integer>of(), true));
+    Assert.assertEquals(false, client.setEndOffsets(TEST_ID, ImmutableMap.<Integer, Long>of()));
+    Assert.assertEquals(false, client.setEndOffsets(TEST_ID, ImmutableMap.<Integer, Long>of(), true));
 
     verifyAll();
   }
@@ -218,7 +218,7 @@ public class JDBCIndexTaskClientTest extends EasyMockSupport
     ).times(2);
     replayAll();
 
-    Map<Integer, Integer> results = client.getCurrentOffsets(TEST_ID, true);
+    Map<Integer, Long> results = client.getCurrentOffsets(TEST_ID, true);
     verifyAll();
 
     Assert.assertEquals(0, results.size());
@@ -235,7 +235,7 @@ public class JDBCIndexTaskClientTest extends EasyMockSupport
     );
     replayAll();
 
-    Map<Integer, Integer> results = client.getCurrentOffsets(TEST_ID, true);
+    Map<Integer, Long> results = client.getCurrentOffsets(TEST_ID, true);
     verifyAll();
 
     Request request = captured.getValue();
@@ -247,8 +247,8 @@ public class JDBCIndexTaskClientTest extends EasyMockSupport
     Assert.assertTrue(request.getHeaders().get("X-Druid-Task-Id").contains("test-id"));
 
     Assert.assertEquals(2, results.size());
-    Assert.assertEquals(1, (int)results.get(0));
-    Assert.assertEquals(10, (int)results.get(1));
+    Assert.assertEquals(1, (long)results.get(0));
+    Assert.assertEquals(10L, (long)results.get(1));
   }
 
   @Test
@@ -271,7 +271,7 @@ public class JDBCIndexTaskClientTest extends EasyMockSupport
 
     replayAll();
 
-    Map<Integer, Integer> results = client.getCurrentOffsets(TEST_ID, true);
+    Map<Integer, Long> results = client.getCurrentOffsets(TEST_ID, true);
     verifyAll();
 
     Assert.assertEquals(3, captured.getValues().size());
@@ -285,8 +285,8 @@ public class JDBCIndexTaskClientTest extends EasyMockSupport
     }
 
     Assert.assertEquals(2, results.size());
-    Assert.assertEquals(1, (int) results.get(0));
-    Assert.assertEquals(10, (int) results.get(1));
+    Assert.assertEquals(1, (long) results.get(0));
+    Assert.assertEquals(10, (long) results.get(1));
   }
 
   @Test(expected = RuntimeException.class)
@@ -324,7 +324,7 @@ public class JDBCIndexTaskClientTest extends EasyMockSupport
     );
     replayAll();
 
-    Map<Integer, Integer> results = client.getEndOffsets(TEST_ID);
+    Map<Integer, Long> results = client.getEndOffsets(TEST_ID);
     verifyAll();
 
     Request request = captured.getValue();
@@ -410,7 +410,7 @@ public class JDBCIndexTaskClientTest extends EasyMockSupport
     );
     replayAll();
 
-    Map<Integer, Integer> results = client.pause(TEST_ID);
+    Map<Integer, Long> results = client.pause(TEST_ID);
     verifyAll();
 
     Request request = captured.getValue();
@@ -422,8 +422,8 @@ public class JDBCIndexTaskClientTest extends EasyMockSupport
     Assert.assertTrue(request.getHeaders().get("X-Druid-Task-Id").contains("test-id"));
 
     Assert.assertEquals(2, results.size());
-    Assert.assertEquals(1, (int) results.get(0));
-    Assert.assertEquals(10, (int) results.get(1));
+    Assert.assertEquals(1, (long) results.get(0));
+    Assert.assertEquals(10, (long) results.get(1));
   }
 
   @Test
@@ -437,7 +437,7 @@ public class JDBCIndexTaskClientTest extends EasyMockSupport
     );
     replayAll();
 
-    Map<Integer, Integer> results = client.pause(TEST_ID, 101);
+    Map<Integer, Long> results = client.pause(TEST_ID, 101);
     verifyAll();
 
     Request request = captured.getValue();
@@ -449,8 +449,8 @@ public class JDBCIndexTaskClientTest extends EasyMockSupport
     Assert.assertTrue(request.getHeaders().get("X-Druid-Task-Id").contains("test-id"));
 
     Assert.assertEquals(2, results.size());
-    Assert.assertEquals(1, (int) results.get(0));
-    Assert.assertEquals(10, (int) results.get(1));
+    Assert.assertEquals(1, (long) results.get(0));
+    Assert.assertEquals(10, (long) results.get(1));
   }
 
   @Test
@@ -475,7 +475,7 @@ public class JDBCIndexTaskClientTest extends EasyMockSupport
 
     replayAll();
 
-    Map<Integer, Integer> results = client.pause(TEST_ID);
+    Map<Integer, Long> results = client.pause(TEST_ID);
     verifyAll();
 
     Request request = captured.getValue();
@@ -530,7 +530,7 @@ public class JDBCIndexTaskClientTest extends EasyMockSupport
   @Test
   public void testSetEndOffsets() throws Exception
   {
-    Map<Integer, Integer> endOffsets = ImmutableMap.of(0, 15, 1, 120);
+    Map<Integer, Long> endOffsets = ImmutableMap.of(0, 15L, 1, 120L);
 
     Capture<Request> captured = Capture.newInstance();
     expect(responseHolder.getStatus()).andReturn(HttpResponseStatus.OK).anyTimes();
@@ -555,7 +555,7 @@ public class JDBCIndexTaskClientTest extends EasyMockSupport
   @Test
   public void testSetEndOffsetsAndResume() throws Exception
   {
-    Map<Integer, Integer> endOffsets = ImmutableMap.of(0, 15, 1, 120);
+    Map<Integer, Long> endOffsets = ImmutableMap.of(0, 15L, 1, 120L);
 
     Capture<Request> captured = Capture.newInstance();
     expect(responseHolder.getStatus()).andReturn(HttpResponseStatus.OK).anyTimes();
@@ -698,13 +698,13 @@ public class JDBCIndexTaskClientTest extends EasyMockSupport
     replayAll();
 
     List<URL> expectedUrls = Lists.newArrayList();
-    List<ListenableFuture<Map<Integer, Integer>>> futures = Lists.newArrayList();
+    List<ListenableFuture<Map<Integer, Long>>> futures = Lists.newArrayList();
     for (int i = 0; i < numRequests; i++) {
       expectedUrls.add(new URL(String.format(URL_FORMATTER, TEST_HOST, TEST_PORT, TEST_IDS.get(i), "pause")));
       futures.add(client.pauseAsync(TEST_IDS.get(i)));
     }
 
-    List<Map<Integer, Integer>> responses = Futures.allAsList(futures).get();
+    List<Map<Integer, Long>> responses = Futures.allAsList(futures).get();
 
     verifyAll();
     List<Request> requests = captured.getValues();
@@ -731,13 +731,13 @@ public class JDBCIndexTaskClientTest extends EasyMockSupport
     replayAll();
 
     List<URL> expectedUrls = Lists.newArrayList();
-    List<ListenableFuture<Map<Integer, Integer>>> futures = Lists.newArrayList();
+    List<ListenableFuture<Map<Integer, Long>>> futures = Lists.newArrayList();
     for (int i = 0; i < numRequests; i++) {
       expectedUrls.add(new URL(String.format(URL_FORMATTER, TEST_HOST, TEST_PORT, TEST_IDS.get(i), "pause?timeout=9")));
       futures.add(client.pauseAsync(TEST_IDS.get(i), 9));
     }
 
-    List<Map<Integer, Integer>> responses = Futures.allAsList(futures).get();
+    List<Map<Integer, Long>> responses = Futures.allAsList(futures).get();
 
     verifyAll();
     List<Request> requests = captured.getValues();
@@ -831,13 +831,13 @@ public class JDBCIndexTaskClientTest extends EasyMockSupport
     replayAll();
 
     List<URL> expectedUrls = Lists.newArrayList();
-    List<ListenableFuture<Map<Integer, Integer>>> futures = Lists.newArrayList();
+    List<ListenableFuture<Map<Integer, Long>>> futures = Lists.newArrayList();
     for (int i = 0; i < numRequests; i++) {
       expectedUrls.add(new URL(String.format(URL_FORMATTER, TEST_HOST, TEST_PORT, TEST_IDS.get(i), "offsets/current")));
       futures.add(client.getCurrentOffsetsAsync(TEST_IDS.get(i), false));
     }
 
-    List<Map<Integer, Integer>> responses = Futures.allAsList(futures).get();
+    List<Map<Integer, Long>> responses = Futures.allAsList(futures).get();
 
     verifyAll();
     List<Request> requests = captured.getValues();
@@ -864,13 +864,13 @@ public class JDBCIndexTaskClientTest extends EasyMockSupport
     replayAll();
 
     List<URL> expectedUrls = Lists.newArrayList();
-    List<ListenableFuture<Map<Integer, Integer>>> futures = Lists.newArrayList();
+    List<ListenableFuture<Map<Integer, Long>>> futures = Lists.newArrayList();
     for (int i = 0; i < numRequests; i++) {
       expectedUrls.add(new URL(String.format(URL_FORMATTER, TEST_HOST, TEST_PORT, TEST_IDS.get(i), "offsets/end")));
       futures.add(client.getEndOffsetsAsync(TEST_IDS.get(i)));
     }
 
-    List<Map<Integer, Integer>> responses = Futures.allAsList(futures).get();
+    List<Map<Integer, Long>> responses = Futures.allAsList(futures).get();
 
     verifyAll();
     List<Request> requests = captured.getValues();
@@ -887,7 +887,7 @@ public class JDBCIndexTaskClientTest extends EasyMockSupport
   @Test
   public void testSetEndOffsetsAsync() throws Exception
   {
-    final Map<Integer, Integer> endOffsets = ImmutableMap.of(0, 15, 1, 120);
+    final Map<Integer, Long> endOffsets = ImmutableMap.of(0, 15L, 1, 120L);
     final int numRequests = TEST_IDS.size();
     Capture<Request> captured = Capture.newInstance(CaptureType.ALL);
     expect(responseHolder.getStatus()).andReturn(HttpResponseStatus.OK).anyTimes();
@@ -920,7 +920,7 @@ public class JDBCIndexTaskClientTest extends EasyMockSupport
   @Test
   public void testSetEndOffsetsAsyncWithResume() throws Exception
   {
-    final Map<Integer, Integer> endOffsets = ImmutableMap.of(0, 15, 1, 120);
+    final Map<Integer, Long> endOffsets = ImmutableMap.of(0, 15L, 1, 120L);
     final int numRequests = TEST_IDS.size();
     Capture<Request> captured = Capture.newInstance(CaptureType.ALL);
     expect(responseHolder.getStatus()).andReturn(HttpResponseStatus.OK).anyTimes();

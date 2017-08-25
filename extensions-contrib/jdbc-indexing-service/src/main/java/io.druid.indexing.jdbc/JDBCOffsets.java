@@ -27,12 +27,12 @@ import java.util.Map;
 public class JDBCOffsets
 {
   private final String table;
-  private final Map<Integer, Integer> offsetMaps;
+  private final Map<Integer, Long> offsetMaps;
 
   @JsonCreator
   public JDBCOffsets(
       @JsonProperty("table") final String table,
-      @JsonProperty("offsetMaps") final Map<Integer, Integer> offsetMaps
+      @JsonProperty("offsetMaps") final Map<Integer, Long> offsetMaps
   )
   {
     this.table = table;
@@ -47,7 +47,7 @@ public class JDBCOffsets
   }
 
   @JsonProperty
-  public Map<Integer, Integer> getOffsetMaps()
+  public Map<Integer, Long> getOffsetMaps()
   {
     return offsetMaps;
   }

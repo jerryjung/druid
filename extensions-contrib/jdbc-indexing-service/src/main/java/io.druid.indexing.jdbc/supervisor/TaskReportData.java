@@ -34,19 +34,19 @@ public class TaskReportData
   }
 
   private final String id;
-  private final Map<Integer,Integer>  offsets;
+  private final Map<Integer,Long>  offsets;
   private final DateTime startTime;
   private final Long remainingSeconds;
   private final TaskType type;
-  private final Map<Integer, Integer> lag;
+  private final Map<Integer, Long> lag;
 
   public TaskReportData(
       String id,
-      @Nullable Map<Integer,Integer> offsets,
+      @Nullable Map<Integer,Long> offsets,
       DateTime startTime,
       Long remainingSeconds,
       TaskType type,
-      @Nullable Map<Integer, Integer> lag
+      @Nullable Map<Integer, Long> lag
   )
   {
     this.id = id;
@@ -65,7 +65,7 @@ public class TaskReportData
 
   @JsonProperty
   @JsonInclude(JsonInclude.Include.NON_NULL)
-  public Map<Integer,Integer>  getOffsets()
+  public Map<Integer,Long>  getOffsets()
   {
     return offsets;
   }
@@ -90,7 +90,7 @@ public class TaskReportData
 
   @JsonProperty
   @JsonInclude(JsonInclude.Include.NON_NULL)
-  public Map<Integer, Integer> getLag()
+  public Map<Integer, Long> getLag()
   {
     return lag;
   }

@@ -76,7 +76,7 @@ public class JDBCSupervisorTest extends EasyMockSupport {
   private static final long TEST_CHAT_RETRIES = 9L;
   private static final Period TEST_HTTP_TIMEOUT = new Period("PT10S");
   private static final Period TEST_SHUTDOWN_TIMEOUT = new Period("PT80S");
-  private static final Map<Integer, Integer> offsets = new HashMap();
+  private static final Map<Integer, Long> offsets = new HashMap();
   private static final int interval = 10;
 
   private static TestingCluster zkServer;
@@ -192,7 +192,7 @@ public class JDBCSupervisorTest extends EasyMockSupport {
 
     Assert.assertEquals(table, taskConfig.getJdbcOffsets().getTable());
     Assert.assertEquals(taskConfig.getJdbcOffsets().getOffsetMaps().keySet().toArray()[0], 0);
-    Assert.assertEquals(taskConfig.getJdbcOffsets().getOffsetMaps().values().toArray()[0], 0);
+    Assert.assertEquals(taskConfig.getJdbcOffsets().getOffsetMaps().values().toArray()[0], 0L);
 
   }
 
@@ -229,7 +229,7 @@ public class JDBCSupervisorTest extends EasyMockSupport {
     Assert.assertFalse("minimumMessageTime", taskConfig.getMinimumMessageTime().isPresent());
 
     Assert.assertEquals(table, taskConfig.getJdbcOffsets().getTable());
-    Assert.assertEquals(taskConfig.getJdbcOffsets().getOffsetMaps().values().toArray()[0], 0);
+    Assert.assertEquals(taskConfig.getJdbcOffsets().getOffsetMaps().values().toArray()[0], 0L);
 
   }
 
@@ -287,7 +287,7 @@ public class JDBCSupervisorTest extends EasyMockSupport {
     Assert.assertEquals(task1.getIOConfig().getJdbcOffsets().getOffsetMaps().keySet().toArray()[0], 0);
 
     JDBCIndexTask task2 = captured.getValues().get(1);
-    Assert.assertEquals(task2.getIOConfig().getJdbcOffsets().getOffsetMaps().values().toArray()[0], 0);
+    Assert.assertEquals(task2.getIOConfig().getJdbcOffsets().getOffsetMaps().values().toArray()[0], 0L);
   }
 
   @Test
@@ -353,7 +353,7 @@ public class JDBCSupervisorTest extends EasyMockSupport {
     verifyAll();
 
     JDBCIndexTask task = captured.getValue();
-    Assert.assertEquals(task.getIOConfig().getJdbcOffsets().getOffsetMaps().values().toArray()[0], 0);
+    Assert.assertEquals(task.getIOConfig().getJdbcOffsets().getOffsetMaps().values().toArray()[0], 0L);
   }
 
   @Test
@@ -383,7 +383,7 @@ public class JDBCSupervisorTest extends EasyMockSupport {
     JDBCIOConfig taskConfig = task.getIOConfig();
     Assert.assertEquals("sequenceName-0", taskConfig.getBaseSequenceName());
     Assert.assertEquals(task.getIOConfig().getJdbcOffsets().getOffsetMaps().keySet().toArray()[0], 0);
-    Assert.assertEquals(task.getIOConfig().getJdbcOffsets().getOffsetMaps().values().toArray()[0], 0);
+    Assert.assertEquals(task.getIOConfig().getJdbcOffsets().getOffsetMaps().values().toArray()[0], 0L);
   }
 
   @Test
@@ -477,7 +477,7 @@ public class JDBCSupervisorTest extends EasyMockSupport {
         .anyTimes();
     expect(taskClient.getStartTimeAsync(anyString())).andReturn(Futures.immediateFuture(DateTime.now())).anyTimes();
     expect(indexerMetadataStorageCoordinator.deleteDataSourceMetadata(DATASOURCE)).andReturn(true).anyTimes();
-    expect(indexerMetadataStorageCoordinator.resetDataSourceMetadata(DATASOURCE, new JDBCDataSourceMetadata(new JDBCOffsets(table, ImmutableMap.of(1, 11))))).andReturn(true).anyTimes();
+    expect(indexerMetadataStorageCoordinator.resetDataSourceMetadata(DATASOURCE, new JDBCDataSourceMetadata(new JDBCOffsets(table, ImmutableMap.of(1, 11L))))).andReturn(true).anyTimes();
 
     expect(indexerMetadataStorageCoordinator.getDataSourceMetadata(DATASOURCE)).andReturn(
         new JDBCDataSourceMetadata(
@@ -560,7 +560,7 @@ public class JDBCSupervisorTest extends EasyMockSupport {
     expect(taskClient.getStartTimeAsync("id1")).andReturn(Futures.immediateFuture(now)).anyTimes();
     expect(taskQueue.add(capture(captured))).andReturn(true);
     expect(indexerMetadataStorageCoordinator.deleteDataSourceMetadata(DATASOURCE)).andReturn(true).anyTimes();
-    expect(indexerMetadataStorageCoordinator.resetDataSourceMetadata(DATASOURCE, new JDBCDataSourceMetadata(new JDBCOffsets(table, ImmutableMap.of(1, 11))))).andReturn(true).anyTimes();
+    expect(indexerMetadataStorageCoordinator.resetDataSourceMetadata(DATASOURCE, new JDBCDataSourceMetadata(new JDBCOffsets(table, ImmutableMap.of(1, 11L))))).andReturn(true).anyTimes();
 
     expect(indexerMetadataStorageCoordinator.getDataSourceMetadata(DATASOURCE)).andReturn(
         new JDBCDataSourceMetadata(
@@ -623,7 +623,7 @@ public class JDBCSupervisorTest extends EasyMockSupport {
         .anyTimes();
     expect(taskClient.getStartTimeAsync(anyString())).andReturn(Futures.immediateFuture(DateTime.now())).anyTimes();
     expect(indexerMetadataStorageCoordinator.deleteDataSourceMetadata(DATASOURCE)).andReturn(true).anyTimes();
-    expect(indexerMetadataStorageCoordinator.resetDataSourceMetadata(DATASOURCE, new JDBCDataSourceMetadata(new JDBCOffsets(table, ImmutableMap.of(1, 11))))).andReturn(true).anyTimes();
+    expect(indexerMetadataStorageCoordinator.resetDataSourceMetadata(DATASOURCE, new JDBCDataSourceMetadata(new JDBCOffsets(table, ImmutableMap.of(1, 11L))))).andReturn(true).anyTimes();
 
     expect(indexerMetadataStorageCoordinator.getDataSourceMetadata(DATASOURCE)).andReturn(
         new JDBCDataSourceMetadata(
@@ -694,7 +694,7 @@ public class JDBCSupervisorTest extends EasyMockSupport {
     expect(taskRunner.getRunningTasks()).andReturn(Collections.EMPTY_LIST).anyTimes();
     expect(taskStorage.getActiveTasks()).andReturn(ImmutableList.<Task>of()).anyTimes();
     expect(indexerMetadataStorageCoordinator.deleteDataSourceMetadata(DATASOURCE)).andReturn(true).anyTimes();
-    expect(indexerMetadataStorageCoordinator.resetDataSourceMetadata(DATASOURCE, new JDBCDataSourceMetadata(new JDBCOffsets(table, ImmutableMap.of(1, 11))))).andReturn(true).anyTimes();
+    expect(indexerMetadataStorageCoordinator.resetDataSourceMetadata(DATASOURCE, new JDBCDataSourceMetadata(new JDBCOffsets(table, ImmutableMap.of(1, 11L))))).andReturn(true).anyTimes();
 
     expect(indexerMetadataStorageCoordinator.getDataSourceMetadata(DATASOURCE)).andReturn(
         new JDBCDataSourceMetadata(
@@ -730,13 +730,13 @@ public class JDBCSupervisorTest extends EasyMockSupport {
         .andReturn(Futures.immediateFuture(DateTime.now().minusMinutes(1)))
         .andReturn(Futures.immediateFuture(DateTime.now()));
     expect(taskClient.pauseAsync(EasyMock.contains("sequenceName-0")))
-        .andReturn(Futures.immediateFuture((Map<Integer, Integer>) ImmutableMap.of(0, 20)))
-        .andReturn(Futures.immediateFuture((Map<Integer, Integer>) ImmutableMap.of(0, 20)));
+        .andReturn(Futures.immediateFuture((Map<Integer, Long>) ImmutableMap.of(0, 20L)))
+        .andReturn(Futures.immediateFuture((Map<Integer, Long>) ImmutableMap.of(0, 20L)));
     expect(taskQueue.add(capture(captured))).andReturn(true).times(2);
     expect(
         taskClient.setEndOffsetsAsync(
             EasyMock.contains("sequenceName-0"),
-            EasyMock.eq(ImmutableMap.of(0, 20)),
+            EasyMock.eq(ImmutableMap.of(0, 20L)),
             EasyMock.eq(true)
         )
     ).andReturn(Futures.immediateFuture(true)).times(2);
@@ -757,7 +757,7 @@ public class JDBCSupervisorTest extends EasyMockSupport {
       Assert.assertFalse("pauseAfterRead", taskConfig.isPauseAfterRead());
 
       Assert.assertEquals(table, taskConfig.getJdbcOffsets().getTable());
-      Assert.assertEquals(ImmutableMap.of(0,20), taskConfig.getJdbcOffsets().getOffsetMaps());
+      Assert.assertEquals(ImmutableMap.of(0,20L), taskConfig.getJdbcOffsets().getOffsetMaps());
     }
   }
 
@@ -823,7 +823,7 @@ public class JDBCSupervisorTest extends EasyMockSupport {
     TaskReportData publishingReport = payload.getPublishingTasks().get(0);
 
     Assert.assertEquals("id1", publishingReport.getId());
-    Assert.assertEquals(publishingReport.getOffsets().values().toArray()[0], 0);
+    Assert.assertEquals(publishingReport.getOffsets().values().toArray()[0], 0L);
 
 
     JDBCIndexTask capturedTask = captured.getValue();
@@ -837,7 +837,7 @@ public class JDBCSupervisorTest extends EasyMockSupport {
 
     // check that the new task was created with starting offsets matching where the publishing task finished
     Assert.assertEquals(table, capturedTaskConfig.getJdbcOffsets().getTable());
-    Assert.assertEquals(capturedTaskConfig.getJdbcOffsets().getOffsetMaps().values().toArray()[0], 0);
+    Assert.assertEquals(capturedTaskConfig.getJdbcOffsets().getOffsetMaps().values().toArray()[0], 0L);
 
   }
 
@@ -874,7 +874,7 @@ public class JDBCSupervisorTest extends EasyMockSupport {
     expect(taskClient.getStatusAsync("id1")).andReturn(Futures.immediateFuture(JDBCIndexTask.Status.PUBLISHING));
     expect(taskClient.getCurrentOffsetsAsync("id1", false))
         .andReturn(Futures.immediateFuture(new HashMap<>(0, 20)));
-    expect(taskClient.getCurrentOffsets("id1", true)).andReturn(ImmutableMap.of(0,20));
+    expect(taskClient.getCurrentOffsets("id1", true)).andReturn(ImmutableMap.of(0,20L));
     expect(taskQueue.add(capture(captured))).andReturn(true);
 
     taskRunner.registerListener(anyObject(TaskRunnerListener.class), anyObject(Executor.class));
@@ -915,7 +915,7 @@ public class JDBCSupervisorTest extends EasyMockSupport {
 
     // check that the new task was created with starting offsets matching where the publishing task finished
     Assert.assertEquals(table, capturedTaskConfig.getJdbcOffsets().getTable());
-    Assert.assertEquals(capturedTaskConfig.getJdbcOffsets().getOffsetMaps().values().toArray()[0], 20);
+    Assert.assertEquals(capturedTaskConfig.getJdbcOffsets().getOffsetMaps().values().toArray()[0], 20L);
 
   }
 
@@ -996,15 +996,14 @@ public class JDBCSupervisorTest extends EasyMockSupport {
 
     Assert.assertEquals("id2", activeReport.getId());
     Assert.assertEquals(startTime, activeReport.getStartTime());
-    Assert.assertEquals(activeReport.getOffsets().values().toArray()[0], 0);
-//    Assert.assertEquals(activeReport.getLag().values().toArray()[0], 10);
+    Assert.assertEquals(activeReport.getOffsets().values().toArray()[0], 0L);
 
     Assert.assertEquals("id1", publishingReport.getId());
-    Assert.assertEquals(publishingReport.getOffsets().values().toArray()[0], 0);
+    Assert.assertEquals(publishingReport.getOffsets().values().toArray()[0], 0L);
     Assert.assertEquals(null, publishingReport.getLag());
 
-    Assert.assertEquals(payload.getLatestOffsets().values().toArray()[0], 0);
-    Assert.assertEquals(payload.getMinimumLag().values().toArray()[0], 0);
+    Assert.assertEquals(payload.getLatestOffsets().values().toArray()[0], 0L);
+    Assert.assertEquals(payload.getMinimumLag().values().toArray()[0], 0L);
     Assert.assertEquals(0L, (long) payload.getAggregateLag());
     Assert.assertTrue(payload.getOffsetsLastUpdated().plusMinutes(1).isAfterNow());
   }
@@ -1062,7 +1061,7 @@ public class JDBCSupervisorTest extends EasyMockSupport {
     expect(taskRunner.getRunningTasks()).andReturn(Collections.EMPTY_LIST).anyTimes();
     expect(taskStorage.getActiveTasks()).andReturn(ImmutableList.<Task>of()).anyTimes();
     expect(indexerMetadataStorageCoordinator.deleteDataSourceMetadata(DATASOURCE)).andReturn(true).anyTimes();
-    expect(indexerMetadataStorageCoordinator.resetDataSourceMetadata(DATASOURCE, new JDBCDataSourceMetadata(new JDBCOffsets(table, ImmutableMap.of(1, 11))))).andReturn(true).anyTimes();
+    expect(indexerMetadataStorageCoordinator.resetDataSourceMetadata(DATASOURCE, new JDBCDataSourceMetadata(new JDBCOffsets(table, ImmutableMap.of(1, 11L))))).andReturn(true).anyTimes();
 
     expect(indexerMetadataStorageCoordinator.getDataSourceMetadata(DATASOURCE)).andReturn(
         new JDBCDataSourceMetadata(
@@ -1101,8 +1100,8 @@ public class JDBCSupervisorTest extends EasyMockSupport {
     taskQueue.shutdown(EasyMock.contains("sequenceName-0"));
 
     expect(taskClient.pauseAsync(EasyMock.contains("sequenceName-0")))
-        .andReturn(Futures.immediateFuture((Map<Integer, Integer>) ImmutableMap.of(0, 10)))
-        .andReturn(Futures.immediateFuture((Map<Integer, Integer>) ImmutableMap.of(0, 10)));
+        .andReturn(Futures.immediateFuture((Map<Integer, Long>) ImmutableMap.of(0, 10L)))
+        .andReturn(Futures.immediateFuture((Map<Integer, Long>) ImmutableMap.of(0, 10L)));
 
     expectLastCall().times(1);
     expect(taskQueue.add(capture(captured))).andReturn(true).times(2);
@@ -1113,7 +1112,7 @@ public class JDBCSupervisorTest extends EasyMockSupport {
 
     for (Task task : captured.getValues()) {
       JDBCIOConfig taskConfig = ((JDBCIndexTask) task).getIOConfig();
-      Assert.assertEquals(taskConfig.getJdbcOffsets().getOffsetMaps().values().toArray()[0], 0);
+      Assert.assertEquals(taskConfig.getJdbcOffsets().getOffsetMaps().values().toArray()[0], 0L);
     }
   }
 
@@ -1129,7 +1128,7 @@ public class JDBCSupervisorTest extends EasyMockSupport {
     expect(taskRunner.getRunningTasks()).andReturn(Collections.EMPTY_LIST).anyTimes();
     expect(taskStorage.getActiveTasks()).andReturn(ImmutableList.<Task>of()).anyTimes();
     expect(indexerMetadataStorageCoordinator.deleteDataSourceMetadata(DATASOURCE)).andReturn(true).anyTimes();
-    expect(indexerMetadataStorageCoordinator.resetDataSourceMetadata(DATASOURCE, new JDBCDataSourceMetadata(new JDBCOffsets(table, ImmutableMap.of(1, 11))))).andReturn(true).anyTimes();
+    expect(indexerMetadataStorageCoordinator.resetDataSourceMetadata(DATASOURCE, new JDBCDataSourceMetadata(new JDBCOffsets(table, ImmutableMap.of(1, 11L))))).andReturn(true).anyTimes();
 
     expect(indexerMetadataStorageCoordinator.getDataSourceMetadata(DATASOURCE)).andReturn(
         new JDBCDataSourceMetadata(
@@ -1168,15 +1167,15 @@ public class JDBCSupervisorTest extends EasyMockSupport {
     expectLastCall().times(2);
     expect(taskQueue.add(capture(captured))).andReturn(true).times(2);
     expect(taskClient.pauseAsync(EasyMock.contains("sequenceName-0")))
-        .andReturn(Futures.immediateFuture((Map<Integer, Integer>) ImmutableMap.of(0, 10)))
-        .andReturn(Futures.immediateFuture((Map<Integer, Integer>) ImmutableMap.of(0, 10)));
+        .andReturn(Futures.immediateFuture((Map<Integer, Long>) ImmutableMap.of(0, 10L)))
+        .andReturn(Futures.immediateFuture((Map<Integer, Long>) ImmutableMap.of(0, 10L)));
     replay(taskStorage, taskRunner, taskClient, taskQueue);
     supervisor.runInternal();
     verifyAll();
 
     for (Task task : captured.getValues()) {
       JDBCIOConfig taskConfig = ((JDBCIndexTask) task).getIOConfig();
-      Assert.assertEquals(taskConfig.getJdbcOffsets().getOffsetMaps().values().toArray()[0], 0);
+      Assert.assertEquals(taskConfig.getJdbcOffsets().getOffsetMaps().values().toArray()[0], 0L);
     }
   }
 
@@ -1212,7 +1211,7 @@ public class JDBCSupervisorTest extends EasyMockSupport {
         "id1",
         DATASOURCE,
         "sequenceName-0",
-        new JDBCOffsets(table, ImmutableMap.of(2,11)),
+        new JDBCOffsets(table, ImmutableMap.of(2,11L)),
         null
     );
 
@@ -1220,7 +1219,7 @@ public class JDBCSupervisorTest extends EasyMockSupport {
         "id2",
         DATASOURCE,
         "sequenceName-0",
-        new JDBCOffsets(table, ImmutableMap.of(3,13)),
+        new JDBCOffsets(table, ImmutableMap.of(3,13L)),
         null
     );
 
@@ -1228,7 +1227,7 @@ public class JDBCSupervisorTest extends EasyMockSupport {
         "id3",
         DATASOURCE,
         "sequenceName-0",
-        new JDBCOffsets(table, ImmutableMap.of(4,14)),
+        new JDBCOffsets(table, ImmutableMap.of(4,14L)),
         null
     );
 
@@ -1271,11 +1270,11 @@ public class JDBCSupervisorTest extends EasyMockSupport {
     reset(taskRunner, taskClient, taskQueue);
     expect(taskRunner.getRunningTasks()).andReturn(workItems).anyTimes();
     expect(taskClient.pauseAsync("id2"))
-        .andReturn(Futures.immediateFuture(ImmutableMap.of(14,24)));
+        .andReturn(Futures.immediateFuture(ImmutableMap.of(14,24L)));
     expect(
         taskClient.setEndOffsetsAsync(
             EasyMock.contains("id2"),
-            EasyMock.eq(ImmutableMap.of(14,24)),
+            EasyMock.eq(ImmutableMap.of(14,24L)),
             EasyMock.eq(true)
         )
     ).andReturn(Futures.immediateFuture(true));
@@ -1295,8 +1294,6 @@ public class JDBCSupervisorTest extends EasyMockSupport {
     expect(taskRunner.getRunningTasks()).andReturn(Collections.EMPTY_LIST).anyTimes();
     expect(taskStorage.getActiveTasks()).andReturn(ImmutableList.<Task>of()).anyTimes();
     expect(taskQueue.add(anyObject(Task.class))).andReturn(true);
-//    expect(indexerMetadataStorageCoordinator.deleteDataSourceMetadata(DATASOURCE)).andReturn(true);
-//    expect(indexerMetadataStorageCoordinator.resetDataSourceMetadata(DATASOURCE, new JDBCDataSourceMetadata(new JDBCOffsets(table, ImmutableMap.of(1, 11))))).andReturn(true);
 
     expect(indexerMetadataStorageCoordinator.getDataSourceMetadata(DATASOURCE)).andReturn(
         new JDBCDataSourceMetadata(
@@ -1327,8 +1324,6 @@ public class JDBCSupervisorTest extends EasyMockSupport {
     expect(taskMaster.getTaskRunner()).andReturn(Optional.of(taskRunner)).anyTimes();
     expect(taskRunner.getRunningTasks()).andReturn(Collections.EMPTY_LIST).anyTimes();
     expect(taskStorage.getActiveTasks()).andReturn(ImmutableList.<Task>of()).anyTimes();
-//    expect(indexerMetadataStorageCoordinator.deleteDataSourceMetadata(DATASOURCE)).andReturn(true);
-//    expect(indexerMetadataStorageCoordinator.resetDataSourceMetadata(DATASOURCE, new JDBCDataSourceMetadata(new JDBCOffsets(table, ImmutableMap.of(1, 11))))).andReturn(true);
 
     expect(indexerMetadataStorageCoordinator.getDataSourceMetadata(DATASOURCE)).andReturn(
         new JDBCDataSourceMetadata(
@@ -1348,17 +1343,17 @@ public class JDBCSupervisorTest extends EasyMockSupport {
 
     JDBCDataSourceMetadata JDBCDataSourceMetadata = new JDBCDataSourceMetadata(new JDBCOffsets(
         table,
-        ImmutableMap.of(0, 10)
+        ImmutableMap.of(0, 10L)
     ));
 
     JDBCDataSourceMetadata resetMetadata = new JDBCDataSourceMetadata(new JDBCOffsets(
         table,
-        ImmutableMap.of(1, 11)
+        ImmutableMap.of(1, 11L)
     ));
 
     JDBCDataSourceMetadata expectedMetadata = new JDBCDataSourceMetadata(new JDBCOffsets(
         table,
-        ImmutableMap.of(1, 11)
+        ImmutableMap.of(1, 11L)
     ));
 
     reset(indexerMetadataStorageCoordinator);
@@ -1383,8 +1378,6 @@ public class JDBCSupervisorTest extends EasyMockSupport {
     expect(taskMaster.getTaskRunner()).andReturn(Optional.of(taskRunner)).anyTimes();
     expect(taskRunner.getRunningTasks()).andReturn(Collections.EMPTY_LIST).anyTimes();
     expect(taskStorage.getActiveTasks()).andReturn(ImmutableList.<Task>of()).anyTimes();
-//    expect(indexerMetadataStorageCoordinator.deleteDataSourceMetadata(DATASOURCE)).andReturn(true);
-//    expect(indexerMetadataStorageCoordinator.resetDataSourceMetadata(DATASOURCE, new JDBCDataSourceMetadata(new JDBCOffsets(table, ImmutableMap.of(1, 11))))).andReturn(true);
 
     expect(indexerMetadataStorageCoordinator.getDataSourceMetadata(DATASOURCE)).andReturn(
         new JDBCDataSourceMetadata(
@@ -1401,7 +1394,7 @@ public class JDBCSupervisorTest extends EasyMockSupport {
 
     JDBCDataSourceMetadata resetMetadata = new JDBCDataSourceMetadata(new JDBCOffsets(
         table,
-        ImmutableMap.of(1, 11)
+        ImmutableMap.of(1, 11L)
     ));
 
     reset(indexerMetadataStorageCoordinator);
@@ -1496,7 +1489,7 @@ public class JDBCSupervisorTest extends EasyMockSupport {
       Period lateMessageRejectionPeriod
   ) {
 
-    offsets.put(0, 0);
+    offsets.put(0, 0L);
     JDBCSupervisorIOConfig jdbcSupervisorIOConfig = new JDBCSupervisorIOConfig(
         table,
         "druid",

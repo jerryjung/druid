@@ -35,12 +35,7 @@ import com.metamx.http.client.Request;
 import com.metamx.http.client.response.FullResponseHandler;
 import com.metamx.http.client.response.FullResponseHolder;
 import io.druid.concurrent.Execs;
-import io.druid.indexing.common.RetryPolicy;
-import io.druid.indexing.common.RetryPolicyConfig;
-import io.druid.indexing.common.RetryPolicyFactory;
-import io.druid.indexing.common.TaskInfoProvider;
-import io.druid.indexing.common.TaskLocation;
-import io.druid.indexing.common.TaskStatus;
+import io.druid.indexing.common.*;
 import io.druid.java.util.common.IAE;
 import io.druid.java.util.common.ISE;
 import io.druid.segment.realtime.firehose.ChatHandlerResource;
@@ -58,8 +53,7 @@ import java.net.URI;
 import java.util.Map;
 import java.util.concurrent.Callable;
 
-public class JDBCIndexTaskClient
-{
+public class JDBCIndexTaskClient {
   public static final int MAX_RETRY_WAIT_SECONDS = 10;
   private static final int MIN_RETRY_WAIT_SECONDS = 2;
   private static final EmittingLogger log = new EmittingLogger(JDBCIndexTaskClient.class);
@@ -81,8 +75,7 @@ public class JDBCIndexTaskClient
       int numThreads,
       Duration httpTimeout,
       long numRetries
-  )
-  {
+  ) {
     this.httpClient = httpClient;
     this.jsonMapper = jsonMapper;
     this.taskInfoProvider = taskInfoProvider;
@@ -101,13 +94,11 @@ public class JDBCIndexTaskClient
     );
   }
 
-  public void close()
-  {
+  public void close() {
     executorService.shutdownNow();
   }
 
-  public boolean stop(final String id, final boolean publish)
-  {
+  public boolean stop(final String id, final boolean publish) {
     log.debug("Stop task[%s] publish[%s]", id, publish);
 
     try {
@@ -115,40 +106,33 @@ public class JDBCIndexTaskClient
           id, HttpMethod.POST, "stop", publish ? "publish=true" : null, true
       );
       return response.getStatus().getCode() / 100 == 2;
-    }
-    catch (NoTaskLocationException e) {
+    } catch (NoTaskLocationException e) {
       return false;
-    }
-    catch (TaskNotRunnableException e) {
+    } catch (TaskNotRunnableException e) {
       log.info("Task [%s] couldn't be stopped because it is no longer running", id);
       return true;
-    }
-    catch (Exception e) {
+    } catch (Exception e) {
       log.warn(e, "Exception while stopping task [%s]", id);
       return false;
     }
   }
 
-  public boolean resume(final String id)
-  {
+  public boolean resume(final String id) {
     log.debug("Resume task[%s]", id);
 
     try {
       final FullResponseHolder response = submitRequest(id, HttpMethod.POST, "resume", null, true);
       return response.getStatus().getCode() / 100 == 2;
-    }
-    catch (NoTaskLocationException e) {
+    } catch (NoTaskLocationException e) {
       return false;
     }
   }
 
-  public Map<Integer, Integer> pause(final String id)
-  {
+  public Map<Integer, Long> pause(final String id) {
     return pause(id, 0);
   }
 
-  public Map<Integer, Integer> pause(final String id, final long timeout)
-  {
+  public Map<Integer, Long> pause(final String id, final long timeout) {
     log.debug("Pause task[%s] timeout[%d]", id, timeout);
 
     try {
@@ -162,8 +146,7 @@ public class JDBCIndexTaskClient
 
       if (response.getStatus().equals(HttpResponseStatus.OK)) {
         log.info("Task [%s] paused successfully", id);
-        return jsonMapper.readValue(response.getContent(), new TypeReference<Map<Integer, Integer>>()
-        {
+        return jsonMapper.readValue(response.getContent(), new TypeReference<Map<Integer, Long>>() {
         });
       }
 
@@ -187,94 +170,76 @@ public class JDBCIndexTaskClient
           Thread.sleep(sleepTime);
         }
       }
-    }
-    catch (NoTaskLocationException e) {
+    } catch (NoTaskLocationException e) {
       log.error("Exception [%s] while pausing Task [%s]", e.getMessage(), id);
       return ImmutableMap.of();
-    }
-    catch (IOException | InterruptedException e) {
+    } catch (IOException | InterruptedException e) {
       log.error("Exception [%s] while pausing Task [%s]", e.getMessage(), id);
       throw Throwables.propagate(e);
     }
   }
 
-  public JDBCIndexTask.Status getStatus(final String id)
-  {
+  public JDBCIndexTask.Status getStatus(final String id) {
     log.info("GetStatus task[%s]", id);
 
     try {
       final FullResponseHolder response = submitRequest(id, HttpMethod.GET, "status", null, true);
       return jsonMapper.readValue(response.getContent(), JDBCIndexTask.Status.class);
-    }
-    catch (NoTaskLocationException e) {
+    } catch (NoTaskLocationException e) {
       return JDBCIndexTask.Status.NOT_STARTED;
-    }
-    catch (IOException e) {
+    } catch (IOException e) {
       throw Throwables.propagate(e);
     }
   }
 
-  public DateTime getStartTime(final String id)
-  {
+  public DateTime getStartTime(final String id) {
     log.debug("GetStartTime task[%s]", id);
 
     try {
       final FullResponseHolder response = submitRequest(id, HttpMethod.GET, "time/start", null, true);
       return response.getContent() == null || response.getContent().isEmpty()
-             ? null
-             : jsonMapper.readValue(response.getContent(), DateTime.class);
-    }
-    catch (NoTaskLocationException e) {
+          ? null
+          : jsonMapper.readValue(response.getContent(), DateTime.class);
+    } catch (NoTaskLocationException e) {
       return null;
-    }
-    catch (IOException e) {
+    } catch (IOException e) {
       throw Throwables.propagate(e);
     }
   }
 
-  public Map<Integer, Integer>   getCurrentOffsets(final String id, final boolean retry)
-  {
+  public Map<Integer, Long> getCurrentOffsets(final String id, final boolean retry) {
     log.debug("GetCurrentOffsets task[%s] retry[%s]", id, retry);
 
     try {
       final FullResponseHolder response = submitRequest(id, HttpMethod.GET, "offsets/current", null, retry);
-      return jsonMapper.readValue(response.getContent(), new TypeReference<Map<Integer, Integer>>()
-      {
+      return jsonMapper.readValue(response.getContent(), new TypeReference<Map<Integer, Long>>() {
       });
-    }
-    catch (NoTaskLocationException e) {
+    } catch (NoTaskLocationException e) {
       return ImmutableMap.of();
-    }
-    catch (IOException e) {
+    } catch (IOException e) {
       throw Throwables.propagate(e);
     }
   }
 
-  public Map<Integer, Integer> getEndOffsets(final String id)
-  {
+  public Map<Integer, Long> getEndOffsets(final String id) {
     log.debug("GetEndOffsets task[%s]", id);
 
     try {
       final FullResponseHolder response = submitRequest(id, HttpMethod.GET, "offsets/end", null, true);
-      return jsonMapper.readValue(response.getContent(), new TypeReference<Map<Integer, Integer>>()
-      {
+      return jsonMapper.readValue(response.getContent(), new TypeReference<Map<Integer, Long>>() {
       });
-    }
-    catch (NoTaskLocationException e) {
+    } catch (NoTaskLocationException e) {
       return ImmutableMap.of();
-    }
-    catch (IOException e) {
+    } catch (IOException e) {
       throw Throwables.propagate(e);
     }
   }
 
-  public boolean setEndOffsets(final String id, final  Map<Integer,Integer> endOffsets)
-  {
+  public boolean setEndOffsets(final String id, final Map<Integer, Long> endOffsets) {
     return setEndOffsets(id, endOffsets, false);
   }
 
-  public boolean setEndOffsets(final String id, final  Map<Integer,Integer> endOffsets, final boolean resume)
-  {
+  public boolean setEndOffsets(final String id, final Map<Integer, Long> endOffsets, final boolean resume) {
     log.debug("SetEndOffsets task[%s] endOffsets[%s] resume[%s]", id, endOffsets, resume);
 
     try {
@@ -287,133 +252,105 @@ public class JDBCIndexTaskClient
           true
       );
       return response.getStatus().getCode() / 100 == 2;
-    }
-    catch (NoTaskLocationException e) {
+    } catch (NoTaskLocationException e) {
       return false;
-    }
-    catch (IOException e) {
+    } catch (IOException e) {
       throw Throwables.propagate(e);
     }
   }
 
-  public ListenableFuture<Boolean> stopAsync(final String id, final boolean publish)
-  {
+  public ListenableFuture<Boolean> stopAsync(final String id, final boolean publish) {
     return executorService.submit(
-        new Callable<Boolean>()
-        {
+        new Callable<Boolean>() {
           @Override
-          public Boolean call() throws Exception
-          {
+          public Boolean call() throws Exception {
             return stop(id, publish);
           }
         }
     );
   }
 
-  public ListenableFuture<Boolean> resumeAsync(final String id)
-  {
+  public ListenableFuture<Boolean> resumeAsync(final String id) {
     return executorService.submit(
-        new Callable<Boolean>()
-        {
+        new Callable<Boolean>() {
           @Override
-          public Boolean call() throws Exception
-          {
+          public Boolean call() throws Exception {
             return resume(id);
           }
         }
     );
   }
 
-  public ListenableFuture<Map<Integer,Integer>> pauseAsync(final String id)
-  {
+  public ListenableFuture<Map<Integer, Long>> pauseAsync(final String id) {
     return pauseAsync(id, 0);
   }
 
-  public ListenableFuture<Map<Integer,Integer>> pauseAsync(final String id, final long timeout)
-  {
+  public ListenableFuture<Map<Integer, Long>> pauseAsync(final String id, final long timeout) {
     return executorService.submit(
-        new Callable<Map<Integer,Integer>>()
-        {
+        new Callable<Map<Integer, Long>>() {
           @Override
-          public Map<Integer,Integer> call() throws Exception
-          {
+          public Map<Integer, Long> call() throws Exception {
             return pause(id, timeout);
           }
         }
     );
   }
 
-  public ListenableFuture<JDBCIndexTask.Status> getStatusAsync(final String id)
-  {
+  public ListenableFuture<JDBCIndexTask.Status> getStatusAsync(final String id) {
     return executorService.submit(
-        new Callable<JDBCIndexTask.Status>()
-        {
+        new Callable<JDBCIndexTask.Status>() {
           @Override
-          public JDBCIndexTask.Status call() throws Exception
-          {
+          public JDBCIndexTask.Status call() throws Exception {
             return getStatus(id);
           }
         }
     );
   }
 
-  public ListenableFuture<DateTime> getStartTimeAsync(final String id)
-  {
+  public ListenableFuture<DateTime> getStartTimeAsync(final String id) {
     return executorService.submit(
-        new Callable<DateTime>()
-        {
+        new Callable<DateTime>() {
           @Override
-          public DateTime call() throws Exception
-          {
+          public DateTime call() throws Exception {
             return getStartTime(id);
           }
         }
     );
   }
 
-  public ListenableFuture<Map<Integer, Integer>> getCurrentOffsetsAsync(final String id, final boolean retry)
-  {
+  public ListenableFuture<Map<Integer, Long>> getCurrentOffsetsAsync(final String id, final boolean retry) {
     return executorService.submit(
-        new Callable<Map<Integer, Integer>>()
-        {
+        new Callable<Map<Integer, Long>>() {
           @Override
-          public Map<Integer, Integer> call() throws Exception
-          {
+          public Map<Integer, Long> call() throws Exception {
             return getCurrentOffsets(id, retry);
           }
         }
     );
   }
 
-  public ListenableFuture<Map<Integer, Integer>> getEndOffsetsAsync(final String id)
-  {
+  public ListenableFuture<Map<Integer, Long>> getEndOffsetsAsync(final String id) {
     return executorService.submit(
-        new Callable<Map<Integer, Integer>>()
-        {
+        new Callable<Map<Integer, Long>>() {
           @Override
-          public Map<Integer, Integer> call() throws Exception
-          {
+          public Map<Integer, Long> call() throws Exception {
             return getEndOffsets(id);
           }
         }
     );
   }
 
-  public ListenableFuture<Boolean> setEndOffsetsAsync(final String id, final  Map<Integer,Integer> endOffsets)
-  {
+  public ListenableFuture<Boolean> setEndOffsetsAsync(final String id, final Map<Integer, Long> endOffsets) {
     return setEndOffsetsAsync(id, endOffsets, false);
   }
 
   public ListenableFuture<Boolean> setEndOffsetsAsync(
-      final String id, final Map<Integer,Integer> endOffsets, final boolean resume
-  )
-  {
+      final String id, final Map<Integer, Long> endOffsets, final boolean resume
+  ) {
     return executorService.submit(
-        new Callable<Boolean>()
-        {
+        new Callable<Boolean>() {
           @Override
-          public Boolean call() throws Exception
-          {
+          public Boolean call() throws Exception {
             return setEndOffsets(id, endOffsets, resume);
           }
         }
@@ -421,8 +358,7 @@ public class JDBCIndexTaskClient
   }
 
   @VisibleForTesting
-  RetryPolicyFactory createRetryPolicyFactory()
-  {
+  RetryPolicyFactory createRetryPolicyFactory() {
     // Retries [numRetries] times before giving up; this should be set long enough to handle any temporary
     // unresponsiveness such as network issues, if a task is still in the process of starting up, or if the task is in
     // the middle of persisting to disk and doesn't respond immediately.
@@ -435,13 +371,11 @@ public class JDBCIndexTaskClient
   }
 
   @VisibleForTesting
-  void checkConnection(String host, int port) throws IOException
-  {
+  void checkConnection(String host, int port) throws IOException {
     new Socket(host, port).close();
   }
 
-  private FullResponseHolder submitRequest(String id, HttpMethod method, String pathSuffix, String query, boolean retry)
-  {
+  private FullResponseHolder submitRequest(String id, HttpMethod method, String pathSuffix, String query, boolean retry) {
     return submitRequest(id, method, pathSuffix, query, new byte[0], retry);
   }
 
@@ -452,8 +386,7 @@ public class JDBCIndexTaskClient
       String query,
       byte[] content,
       boolean retry
-  )
-  {
+  ) {
     final RetryPolicy retryPolicy = retryPolicyFactory.makeRetryPolicy();
     while (true) {
       FullResponseHolder response = null;
@@ -489,8 +422,7 @@ public class JDBCIndexTaskClient
 
           log.debug("HTTP %s: %s", method.getName(), serviceUri.toString());
           response = httpClient.go(request, new FullResponseHandler(Charsets.UTF_8), httpTimeout).get();
-        }
-        catch (Exception e) {
+        } catch (Exception e) {
           Throwables.propagateIfInstanceOf(e.getCause(), IOException.class);
           Throwables.propagateIfInstanceOf(e.getCause(), ChannelException.class);
           throw Throwables.propagate(e);
@@ -504,8 +436,7 @@ public class JDBCIndexTaskClient
         } else {
           throw new IOException(String.format("Received status [%d]", responseCode));
         }
-      }
-      catch (IOException | ChannelException e) {
+      } catch (IOException | ChannelException e) {
 
         // Since workers are free to move tasks around to different ports, there is a chance that a task may have been
         // moved but our view of its location has not been updated yet from ZK. To detect this case, we send a header
@@ -531,8 +462,8 @@ public class JDBCIndexTaskClient
         }
 
         String urlForLog = (request != null
-                            ? request.getUrl().toString()
-                            : String.format("http://%s:%d%s", location.getHost(), location.getPort(), path));
+            ? request.getUrl().toString()
+            : String.format("http://%s:%d%s", location.getHost(), location.getPort(), path));
         if (!retry) {
           // if retry=false, we probably aren't too concerned if the operation doesn't succeed (i.e. the request was
           // for informational purposes only) so don't log a scary stack trace
@@ -552,36 +483,29 @@ public class JDBCIndexTaskClient
                 (response != null ? response.getContent() : e.getMessage())
             );
             Thread.sleep(sleepTime);
-          }
-          catch (InterruptedException e2) {
+          } catch (InterruptedException e2) {
             Throwables.propagate(e2);
           }
         }
-      }
-      catch (NoTaskLocationException e) {
+      } catch (NoTaskLocationException e) {
         log.info("No TaskLocation available for task [%s], this task may not have been assigned to a worker yet or "
-                 + "may have already completed", id);
+            + "may have already completed", id);
         throw e;
-      }
-      catch (Exception e) {
+      } catch (Exception e) {
         log.warn(e, "Exception while sending request");
         throw e;
       }
     }
   }
 
-  public static class NoTaskLocationException extends RuntimeException
-  {
-    public NoTaskLocationException(String message)
-    {
+  public static class NoTaskLocationException extends RuntimeException {
+    public NoTaskLocationException(String message) {
       super(message);
     }
   }
 
-  public static class TaskNotRunnableException extends RuntimeException
-  {
-    public TaskNotRunnableException(String message)
-    {
+  public static class TaskNotRunnableException extends RuntimeException {
+    public TaskNotRunnableException(String message) {
       super(message);
     }
   }

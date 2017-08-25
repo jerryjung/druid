@@ -111,8 +111,8 @@ public class JDBCIndexTask extends AbstractTask implements ChatHandler {
   // blocks until after stopGracefully() has set [stopRequested] and then does a final check on [stopRequested] before
   // transitioning to publishing state.
   private final Object statusLock = new Object();
-  private Map<Integer, Integer> endOffsets = new ConcurrentHashMap<>();
-  private Map<Integer, Integer> nextOffsets = new ConcurrentHashMap<>();
+  private Map<Integer, Long> endOffsets = new ConcurrentHashMap<>();
+  private Map<Integer, Long> nextOffsets = new ConcurrentHashMap<>();
   private ObjectMapper mapper;
   private volatile Appenderator appenderator = null;
   private volatile FireDepartmentMetrics fireDepartmentMetrics = null;
@@ -165,7 +165,8 @@ public class JDBCIndexTask extends AbstractTask implements ChatHandler {
     this.tuningConfig = Preconditions.checkNotNull(tuningConfig, "tuningConfig");
     this.ioConfig = Preconditions.checkNotNull(ioConfig, "ioConfig");
     this.chatHandlerProvider = Optional.fromNullable(chatHandlerProvider);
-    this.endOffsets.putAll(ioConfig.getJdbcOffsets().getOffsetMaps());
+//    this.endOffsets.putAll(ioConfig.getJdbcOffsets().getOffsetMaps());
+    this.nextOffsets.putAll(ioConfig.getJdbcOffsets().getOffsetMaps());
   }
 
   private static String makeTaskId(String dataSource, int randomBits) {
@@ -299,7 +300,7 @@ public class JDBCIndexTask extends AbstractTask implements ChatHandler {
       final Supplier<Committer> committerSupplier = new Supplier<Committer>() {
         @Override
         public Committer get() {
-          final Map<Integer, Integer> snapshot = ImmutableMap.copyOf(nextOffsets);
+          final Map<Integer, Long> snapshot = ImmutableMap.copyOf(nextOffsets);
 
           return new Committer() {
             @Override
@@ -473,7 +474,7 @@ public class JDBCIndexTask extends AbstractTask implements ChatHandler {
         }
         nextOffsets.put(
             (int)ioConfig.getJdbcOffsets().getOffsetMaps().keySet().toArray()[0],
-            (int) currOffset
+            currOffset
         );
 //          if (nextOffsets.get(record.partition()).equals(endOffsets.get(record.partition()))
 //              && assignment.remove(record.partition())) {
@@ -661,14 +662,14 @@ public class JDBCIndexTask extends AbstractTask implements ChatHandler {
   @GET
   @Path("/offsets/current")
   @Produces(MediaType.APPLICATION_JSON)
-  public Map<Integer, Integer> getCurrentOffsets() {
+  public Map<Integer, Long> getCurrentOffsets() {
     return nextOffsets;
   }
 
   @GET
   @Path("/offsets/end")
   @Produces(MediaType.APPLICATION_JSON)
-  public Map<Integer, Integer> getEndOffsets() {
+  public Map<Integer, Long> getEndOffsets() {
     return endOffsets;
   }
 
@@ -677,7 +678,7 @@ public class JDBCIndexTask extends AbstractTask implements ChatHandler {
   @Consumes(MediaType.APPLICATION_JSON)
   @Produces(MediaType.APPLICATION_JSON)
   public Response setEndOffsets(
-      Map<Integer, Integer> offsets,
+      Map<Integer, Long> offsets,
       @QueryParam("resume")
       @DefaultValue("false")
       final boolean resume
